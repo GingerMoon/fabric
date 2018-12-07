@@ -8,7 +8,9 @@ package msp
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
@@ -168,6 +170,20 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 	}
 
 	return nil
+}
+
+// Added for Accelor
+func (id *identity) GetPublicKey() (*ecdsa.PublicKey, error) {
+	pk := id.cert.PublicKey
+
+	switch pk.(type) {
+	case *ecdsa.PublicKey:
+		return pk.(*ecdsa.PublicKey), nil
+	case *rsa.PublicKey:
+		return nil, errors.New("Certificate's public key type RSA is not supported for now.")
+	default:
+		return nil, errors.New("Certificate's public key type not recognized. Supported keys: [ECDSA]")
+	}
 }
 
 // Serialize returns a byte array representation of this identity

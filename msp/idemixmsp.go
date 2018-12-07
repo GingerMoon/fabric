@@ -8,6 +8,7 @@ package msp
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -601,6 +602,11 @@ func (id *idemixidentity) Verify(msg []byte, sig []byte) error {
 		},
 	)
 	return err
+}
+
+func (id *idemixidentity) GetPublicKey() (*ecdsa.PublicKey, error) {
+	mspLogger.Panic("Idemix identity GetPublicKey hasn't been ready!!!")
+	return nil, nil
 }
 
 func (id *idemixidentity) SatisfiesPrincipal(principal *m.MSPPrincipal) error {

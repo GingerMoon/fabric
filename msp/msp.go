@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package msp
 
 import (
+	"crypto/ecdsa"
 	"time"
 
 	"github.com/hyperledger/fabric/protos/msp"
@@ -134,6 +135,8 @@ type Identity interface {
 	// will check the TCert signature against the assumed root certificate
 	// authority.
 	Validate() error
+
+	GetPublicKey() (*ecdsa.PublicKey, error)
 
 	// GetOrganizationalUnits returns zero or more organization units or
 	// divisions this identity is related to as long as this is public
