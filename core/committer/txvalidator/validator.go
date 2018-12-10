@@ -148,6 +148,10 @@ func (v *TxValidator) Validate(block *common.Block) error {
 
 	results := make(chan *blockValidationResult)
 	go func() {
+		// added for accelor. If we use sync.WaitGroup to send the signal of pack the txs into the hardware block ,
+		// the code change made to Fabric will be very urgly.
+		// TODO fpgaServer.sendBlocksize(v.ChainID, block.Data.Data.len)
+
 		for tIdx, d := range block.Data.Data {
 			// ensure that we don't have too many concurrent validation workers
 			v.Support.Acquire(context.Background(), 1)

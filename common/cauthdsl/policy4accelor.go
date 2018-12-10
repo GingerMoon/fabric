@@ -64,7 +64,10 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 	cauthdslLogger.Infof("the signed data is: %s. ", signedData_encoded)
 	cauthdslLogger.Infof("the signature is: %s. Now send to FPGA for verification.", Signature_encoded)
 
-	valid := true // fpga grpc
+	// TODO fpgaServer.VerifySig4VSCC(pubkeybytes_encoded, signedData_encoded, Signature_encoded)
+	// for now, we don't support multiple channels because we can't get the channelID directly from here.
+	// and we don't want to add this parameter (channelID) to every function call in the whole call stack. We will redesign later.
+	valid := true
 	//return d.deserializedIdentity.Verify(d.signedData.Data, d.signedData.Signature)
 	if !valid {
 		return errors.New("The signature is invalid")
