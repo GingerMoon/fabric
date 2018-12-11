@@ -1,0 +1,75 @@
+syntax = "proto2";
+
+// The gPRC service definition.
+service BlockRPC {
+  // Sends a block
+  rpc SendBlockData (BlockRequest) returns (BlockReply) {}
+}
+
+// The request containing the block struct.
+message BlockRequest {
+    required uint64 block_id = 1;
+    required bool cold_restart = 2;
+    required uint32 tx_count = 3;
+
+    // transaction
+    message Transaction {
+
+        message SignatureStruct {
+            required string sign_r = 1;
+            required string sign_w = 2;
+            required string pk_x = 3;
+            required string pk_y = 4;
+            required string e = 5;
+        }
+
+        message ReadStruct {
+            required string key = 1;
+            required string version = 2;
+        }
+
+        message WriteStruct {
+            required string key = 1;
+            required string value = 2;
+            required bool is_del = 3;
+        }
+
+        required string tx_id = 1;
+        required uint32 rd_count = 2;
+        required uint32 wt_count = 3;
+        required uint32 sg_count = 4;
+
+        repeated SignatureStruct signatures = 5;
+        repeated ReadStruct reads = 6;
+        repeated WriteStruct writes = 7;
+    }
+
+    repeated Transaction tx = 4;
+    required uint32 padding = 5;
+}
+
+// The response containing the true or false Boolean value. 
+message BlockReply {
+
+    required uint64 block_id = 1;
+    required uint32 tx_count = 2;
+
+    // transaction
+    message TXReply {
+        required string tx_id = 1;
+        required bool tx_valid = 2;
+        optional bool sign_check = 3;
+        optional uint32 rd_count = 4;
+
+        message ReadReply {
+            required bool rd_update_valid = 1;
+            required bool rd_version_valid = 2;
+        }
+        
+        repeated ReadReply read_checks = 5;
+    }
+
+    repeated TXReply tx_reply = 3;
+}
+
+
