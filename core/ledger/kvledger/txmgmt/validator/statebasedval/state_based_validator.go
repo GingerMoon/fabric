@@ -97,6 +97,8 @@ func (v *Validator) ValidateAndPrepareBatch(block *internal.Block, doMVCCValidat
 		}
 	}
 
+	// fpgaServer.sendBlock4mvcc(block) // added for Accelor
+	logger.Infof("fpgaServer.sendBlock4mvcc(block)")
 	updates := internal.NewPubAndHashUpdates()
 	for _, tx := range block.Txs {
 		var validationCode peer.TxValidationCode
