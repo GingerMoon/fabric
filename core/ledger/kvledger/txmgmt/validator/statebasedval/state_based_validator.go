@@ -12,6 +12,8 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/validator/internal"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
+	"github.com/hyperledger/fabric/fpga"
+	fpgapb "github.com/hyperledger/fabric/protos/fpga"
 	"github.com/hyperledger/fabric/protos/ledger/rwset/kvrwset"
 	"github.com/hyperledger/fabric/protos/peer"
 )
@@ -85,6 +87,40 @@ func (v *Validator) preLoadCommittedVersionOfRSet(block *internal.Block) error {
 	return nil
 }
 
+// internal.Block is an internal package, hence cannot be accessed outside
+func convertBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc{
+	blockmvcc := new(fpgapb.Block4Mvcc)
+	blockmvcc.Num = block.Num
+
+	txs := make([]*fpgapb.Transaction4Mvcc, len(block.Txs))
+	for i, tx := range block.Txs {
+		txs[i] = &fpgapb.Transaction4Mvcc{}
+		txs[i].Id = tx.ID
+		txs[i].IndexInBlock = uint64(tx.IndexInBlock)
+		txs[i].ValidationCode = tx.ValidationCode
+
+		nsrwsets := make([]*fpgapb.NsRwSet, len(tx.RWSet.NsRwSets))
+		for j, nsrwset := range tx.RWSet.NsRwSets {
+			nsrwsets[j] = &fpgapb.NsRwSet{}
+			nsrwsets[j].NameSpace = nsrwset.NameSpace
+			nsrwsets[j].KvRwSet = nsrwset.KvRwSet
+
+			collHashedRwSets := make([]*fpgapb.CollHashedRwSet, len(nsrwset.CollHashedRwSets))
+			for k, collHashedRwSet := range nsrwset.CollHashedRwSets {
+				collHashedRwSets[k] = &fpgapb.CollHashedRwSet{}
+				collHashedRwSets[k].CollectionName = collHashedRwSet.CollectionName
+				collHashedRwSets[k].HashedRwSet = collHashedRwSet.HashedRwSet
+				collHashedRwSets[k].PvtRwSetHash = collHashedRwSet.PvtRwSetHash
+			}
+			nsrwsets[j].CollHashedRwSets = collHashedRwSets
+		}
+		txs[i].RwSet = &fpgapb.TxRwSet{}
+		txs[i].RwSet.NsRwSets = nsrwsets
+	}
+	blockmvcc.Txs = txs
+	return blockmvcc
+}
+
 // ValidateAndPrepareBatch implements method in Validator interface
 func (v *Validator) ValidateAndPrepareBatch(block *internal.Block, doMVCCValidation bool) (*internal.PubAndHashUpdates, error) {
 	// Check whether statedb implements BulkOptimizable interface. For now,
@@ -97,8 +133,9 @@ func (v *Validator) ValidateAndPrepareBatch(block *internal.Block, doMVCCValidat
 		}
 	}
 
-	// fpgaServer.sendBlock4mvcc(block) // added for Accelor
-	logger.Infof("fpgaServer.sendBlock4mvcc(block)")
+	response := fpga.SendBlock4Mvcc(convertBlock4mvcc(block))
+	logger.Infof("fpga.SendBlock4Mvcc response: %v", response)
+
 	updates := internal.NewPubAndHashUpdates()
 	for _, tx := range block.Txs {
 		var validationCode peer.TxValidationCode

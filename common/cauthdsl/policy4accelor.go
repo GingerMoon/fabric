@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/policies"
+	"github.com/hyperledger/fabric/fpga"
+	fpgapb "github.com/hyperledger/fabric/protos/fpga"
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
 )
@@ -64,7 +66,12 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 	cauthdslLogger.Infof("the signed data is: %s. ", signedData_encoded)
 	cauthdslLogger.Infof("the signature is: %s. Now send to FPGA for verification.", Signature_encoded)
 
-	// TODO fpgaServer.VerifySig4VSCC(pubkeybytes_encoded, signedData_encoded, Signature_encoded)
+	response := fpga.VerifySig4Vscc(&fpgapb.VsccEnvelope{
+		PubkeybytesEncoded:string(pubkeybytes_encoded),
+		SignedDataEncoded: string(signedData_encoded),
+		SignatureEncoded : string(Signature_encoded)})
+	cauthdslLogger.Infof("fpga.VerifySig4Vscc response: %v", response)
+
 	// for now, we don't support multiple channels because we can't get the channelID directly from here.
 	// and we don't want to add this parameter (channelID) to every function call in the whole call stack. We will redesign later.
 	valid := true

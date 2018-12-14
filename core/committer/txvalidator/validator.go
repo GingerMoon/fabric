@@ -9,6 +9,8 @@ package txvalidator
 import (
 	"context"
 	"fmt"
+	"github.com/hyperledger/fabric/fpga"
+	fpgapb"github.com/hyperledger/fabric/protos/fpga"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -150,7 +152,8 @@ func (v *TxValidator) Validate(block *common.Block) error {
 	go func() {
 		// added for accelor. If we use sync.WaitGroup to send the signal of pack the txs into the hardware block ,
 		// the code change made to Fabric will be very urgly.
-		// TODO fpgaServer.sendBlocksize(v.ChainID, block.Data.Data.len)
+		result := fpga.SendBlockDataSize4Vscc(&fpgapb.BlockDataSize4Vscc{ChainId:v.ChainID, Size:uint64(len(block.Data.Data))})
+		logger.Infof("fpga.SendBlockDataSize4Vscc result: %v", result)
 
 		for tIdx, d := range block.Data.Data {
 			// ensure that we don't have too many concurrent validation workers
