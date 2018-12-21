@@ -65,7 +65,10 @@ func initSendBlock4MvccWorkerWorker() {
 }
 
 func initVerifySigWorkers () {
-	nWorkers := 4 // TODO viper.GetInt("peer.validatorPoolSize")
+	nWorkers := viper.GetInt("peer.validatorPoolSize")
+        if nWorkers == 0 {
+            nWorkers = 12 // we do have 12 ECDSA engines on HW
+        }
 	logger.Infof("peer.validatorPoolSize is: %d", nWorkers)
 	verifySigWorkers = make([]pb.FpgaClient, nWorkers)
 	for i := 0; i < len(verifySigWorkers); i++ {
@@ -108,9 +111,9 @@ func startSendBlock4MvccTaskPool() {
 			params := <-sendBlock4MvccTaskPool
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			response, err := sendBlockSizeWorker.SendBlock4Mvcc(ctx, params.in)
+			response, err := sendBlock4MvccWorker.SendBlock4Mvcc(ctx, params.in)
 			if err != nil {
-				logger.Fatalf("%v.VerifySig4Vscc(_) = _, %v: ", sendBlockSizeWorker, err)
+				logger.Fatalf("%v.VerifySig4Vscc(_) = _, %v: ", sendBlock4MvccWorker, err)
 			}
 			logger.Infof("VerifySig4Vscc succeeded. in: %v, out: %v.", params.in, response)
 			params.out <- response
