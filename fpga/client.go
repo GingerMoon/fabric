@@ -21,32 +21,21 @@ var (
 	since fabric handles verify sig of txs in the block concurrently,
 	there are multiple verifySigWorkers
 	*/
-	sendBlockSizeWorker pb.FpgaClient
 	verifySigWorkers []pb.FpgaClient
 	sendBlock4MvccWorker pb.FpgaClient
-
 
 	verifySigWorkersSemaphore *semaphore.Weighted // used for verifySigTaskPool
 
 	verifySigTaskPool         chan *verifyTask
-	sendBlockSizeTaskPool  chan *sendBlockSizeTask
 	sendBlock4MvccTaskPool chan *sendBlock4MvccTask
 )
 
 func init() {
-	initSendBlockSizeWorker()
-	startSendBlockSizeTaskPool()
-
 	initVerifySigWorkers()
 	startVerifySigTaskPool()
 
 	initSendBlock4MvccWorkerWorker()
 	startSendBlock4MvccTaskPool()
-}
-
-type sendBlockSizeTask struct {
-	in *pb.BlockDataSize4Vscc
-	out chan <- *pb.ProcessResult
 }
 
 type verifyTask struct {
@@ -70,11 +59,6 @@ func createFpgaClient() pb.FpgaClient {
 	return pb.NewFpgaClient(conn)
 }
 
-func initSendBlockSizeWorker() {
-	sendBlockSizeWorker = createFpgaClient()
-	sendBlockSizeTaskPool = make(chan *sendBlockSizeTask, 10)
-}
-
 func initSendBlock4MvccWorkerWorker() {
 	sendBlock4MvccWorker = createFpgaClient()
 	sendBlock4MvccTaskPool = make(chan *sendBlock4MvccTask)
@@ -91,23 +75,6 @@ func initVerifySigWorkers () {
 	verifySigWorkersSemaphore = semaphore.NewWeighted(int64(nWorkers))
 }
 
-func startSendBlockSizeTaskPool() {
-	go func() {
-		logger.Infof("startSendBlockSizeTaskPool")
-		for true {
-			params := <-sendBlockSizeTaskPool
-			logger.Infof("receive a sendBlockSizeTask")
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			response, err := sendBlockSizeWorker.SendBlockDataSize4Vscc(ctx, params.in)
-			if err != nil {
-				logger.Fatalf("%v.VerifySig4Vscc(_) = _, %v: ", sendBlockSizeWorker, err)
-			}
-			logger.Infof("VerifySig4Vscc succeeded. in: %v, out: %v.", params.in, response)
-			params.out <- response
-		}
-	}()
-}
 
 func startVerifySigTaskPool() {
 	for i := 0; i < len(verifySigWorkers); i++ {
@@ -151,14 +118,6 @@ func startSendBlock4MvccTaskPool() {
 	}()
 }
 
-func SendBlockDataSize4Vscc(in *pb.BlockDataSize4Vscc) (*pb.ProcessResult) {
-	logger.Infof("begining to call SendBlockDataSize4Vscc")
-	ch := make(chan *pb.ProcessResult)
-	sendBlockSizeTaskPool <- &sendBlockSizeTask{in, ch}
-	logger.Infof("a sendBlockSizeTask has been sent")
-	return <-ch
-	//return nil
-}
 
 func VerifySig4Vscc(in *pb.VsccEnvelope) (*pb.VsccResponse) {
 	ch := make(chan *pb.VsccResponse)

@@ -15,11 +15,6 @@ type fpgaServer struct {
 
 }
 
-func (s *fpgaServer) SendBlockDataSize4Vscc(context.Context, *fpga.BlockDataSize4Vscc) (*fpga.ProcessResult, error) {
-	logger.Infof("mock fpga server receive a SendBlockDataSize4Vscc request")
-	return &fpga.ProcessResult{Result:true}, nil
-}
-
 func (s *fpgaServer) VerifySig4Vscc(context.Context, *fpga.VsccEnvelope) (*fpga.VsccResponse, error) {
 	logger.Infof("mock fpga  receive a VerifySig4Vscc request")
 	return &fpga.VsccResponse{Result:true}, nil
