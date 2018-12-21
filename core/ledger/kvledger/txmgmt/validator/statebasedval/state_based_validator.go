@@ -97,24 +97,28 @@ func convertBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc{
 		txs[i] = &fpgapb.Transaction4Mvcc{}
 		txs[i].Id = tx.ID
 		txs[i].IndexInBlock = uint64(tx.IndexInBlock)
+                count = 0
 
-		nsrwsets := make([]*fpgapb.NsRwSet, len(tx.RWSet.NsRwSets))
-		for j, nsrwset := range tx.RWSet.NsRwSets {
-			nsrwsets[j] = &fpgapb.NsRwSet{}
-			nsrwsets[j].NameSpace = nsrwset.NameSpace
-			nsrwsets[j].KvRwSet = nsrwset.KvRwSet
-
-			collHashedRwSets := make([]*fpgapb.CollHashedRwSet, len(nsrwset.CollHashedRwSets))
-			for k, collHashedRwSet := range nsrwset.CollHashedRwSets {
-				collHashedRwSets[k] = &fpgapb.CollHashedRwSet{}
-				collHashedRwSets[k].CollectionName = collHashedRwSet.CollectionName
-				collHashedRwSets[k].HashedRwSet = collHashedRwSet.HashedRwSet
-				collHashedRwSets[k].PvtRwSetHash = collHashedRwSet.PvtRwSetHash
-			}
-			nsrwsets[j].CollHashedRwSets = collHashedRwSets
+		txrs := make([]*fpgapb.TxRS, len(tx.RWSet.NsRwSets.CollHashedRwSets[0].HashedRwSet.hashed_reads))
+                for j, txr := range tx.RWSet.NsRwSets.CollHashedRwSets[0].HashedRwSet.hashed_reads {
+                        txrs[j] = &fpga.TxRS{}
+			txrs[j].key = txr.key
+			txrs[j].version = txr.version
+                        count++
 		}
-		txs[i].RwSet = &fpgapb.TxRwSet{}
-		txs[i].RwSet.NsRwSets = nsrwsets
+                txs[i].rd_count = count
+                count = 0
+                
+		txws := make([]*fpgapb.TxWS, len(tx.RWSet.NsRwSets.CollhashedRwSets[0].HashedRwSet.hashed_writes))
+                for j, txw := range tx.RWSet.NsRwSets.CollHashedRwSets[0].HashedRwSet.hashed_writes {
+                        txws[j] = &fpga.TxWS{}
+			txws[j].key = txw.key
+			txws[j].value = txw.value
+			txws[j].is_del = txw.is_del
+                        count++
+                }
+                txs[i].wt_count = count
+
 	}
 	blockmvcc.Txs = txs
 	return blockmvcc

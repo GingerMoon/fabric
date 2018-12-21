@@ -9,7 +9,7 @@ option go_package = "github.com/hyperledger/fabric/protos/fpga";
 
 package protos;
 
-import "ledger/rwset/kvrwset/kv_rwset.proto";
+//import "ledger/rwset/kvrwset/kv_rwset.proto";
 
 // Interface exported by the server.
 service Fpga {
@@ -44,8 +44,8 @@ message Transaction4mvcc {
 	string id = 2;
         uint32 rd_count = 3;
         uint32 wt_count = 4;
-	TxRS rs = 5;
-	TxWS ws = 6;
+	repeated TxRS rs = 5;
+	repeated TxWS ws = 6;
 }
 
 message TxRS {
