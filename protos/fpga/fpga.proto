@@ -10,22 +10,11 @@ option go_package = "github.com/hyperledger/fabric/protos/fpga";
 package protos;
 
 import "ledger/rwset/kvrwset/kv_rwset.proto";
-import "peer/transaction.proto";
 
 // Interface exported by the server.
 service Fpga {
-    rpc SendBlockDataSize4vscc(BlockDataSize4vscc) returns (ProcessResult){}
     rpc VerifySig4vscc(VsccEnvelope) returns (VsccResponse) {}
     rpc SendBlock4mvcc(Block4mvcc) returns (MvccResponse) {}
-}
-
-message BlockDataSize4vscc {
-	string chain_id = 1;
-	uint64 size = 2;
-}
-
-message ProcessResult {
-	bool result = 1;
 }
 
 message VsccEnvelope {
@@ -50,7 +39,6 @@ message Transaction4mvcc {
 	uint64 index_in_block = 1;
 	string id = 2;
 	TxRwSet rw_set = 3;
-	protos.TxValidationCode validation_code = 4;
 }
 
 message TxRwSet {
@@ -66,9 +54,9 @@ message NsRwSet {
 message CollHashedRwSet {
 	string collection_name = 1;
 	kvrwset.HashedRWSet hashed_rw_set = 2;
-bytes pvt_rw_set_hash = 3;
+        bytes pvt_rw_set_hash = 3;
 }
 
 message MvccResponse {
-bool result = 1;
+        bool result = 1;
 }

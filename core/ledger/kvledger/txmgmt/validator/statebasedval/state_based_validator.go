@@ -97,7 +97,6 @@ func convertBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc{
 		txs[i] = &fpgapb.Transaction4Mvcc{}
 		txs[i].Id = tx.ID
 		txs[i].IndexInBlock = uint64(tx.IndexInBlock)
-		txs[i].ValidationCode = tx.ValidationCode
 
 		nsrwsets := make([]*fpgapb.NsRwSet, len(tx.RWSet.NsRwSets))
 		for j, nsrwset := range tx.RWSet.NsRwSets {
