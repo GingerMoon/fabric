@@ -7,6 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package kvledger
 
 import (
+	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
+	ledgerutil "github.com/hyperledger/fabric/core/ledger/util"
+	"github.com/hyperledger/fabric/fpga"
+	fpgapb "github.com/hyperledger/fabric/protos/fpga"
+	"github.com/hyperledger/fabric/protos/utils"
 	"sync"
 	"time"
 
@@ -291,6 +296,98 @@ func (l *kvLedger) NewHistoryQueryExecutor() (ledger.HistoryQueryExecutor, error
 	return l.historyDB.NewHistoryQueryExecutor(l.blockStore)
 }
 
+func convertBlock4mvcc(block *common.Block) (*fpgapb.Block4Mvcc, []*txmgr.TxStatInfo, error) {
+	txsStatInfo := []*txmgr.TxStatInfo{}
+
+	b := &fpgapb.Block4Mvcc{Num: block.Header.Number}
+	txs := make([]*fpgapb.Transaction4Mvcc, len(block.Data.Data))
+	b.Txs = txs
+
+	// Committer validator has already set validation flags based on well formed tran checks
+	txsFilter := ledgerutil.TxValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
+	for txIndex, envBytes := range block.Data.Data {
+		var env *common.Envelope
+		var chdr *common.ChannelHeader
+		var payload *common.Payload
+		var err error
+		txStatInfo := &txmgr.TxStatInfo{TxType: -1}
+		txsStatInfo = append(txsStatInfo, txStatInfo)
+
+		if env, err = utils.GetEnvelopeFromBlock(envBytes); err == nil {
+			if payload, err = utils.GetPayload(env); err == nil {
+				chdr, err = utils.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+			}
+		}
+		if txsFilter.IsInvalid(txIndex) {
+			// Skipping invalid transaction
+			logger.Warningf("Channel [%s]: Block [%d] Transaction index [%d] TxId [%s]"+
+				" marked as invalid by committer. Reason code [%s]",
+				chdr.GetChannelId(), block.Header.Number, txIndex, chdr.GetTxId(),
+				txsFilter.Flag(txIndex).String())
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+
+		var txRWSet *rwsetutil.TxRwSet
+		txType := common.HeaderType(chdr.Type)
+		logger.Debugf("txType=%s", txType)
+		if txType == common.HeaderType_ENDORSER_TRANSACTION {
+			// extract actions from the envelope message
+			respPayload, err := utils.GetActionFromEnvelope(envBytes)
+			if err != nil {
+				txsFilter.SetFlag(txIndex, peer.TxValidationCode_NIL_TXACTION)
+				continue
+			}
+			txRWSet = &rwsetutil.TxRwSet{}
+			if err = txRWSet.FromProtoBytes(respPayload.Results); err != nil {
+				txsFilter.SetFlag(txIndex, peer.TxValidationCode_INVALID_OTHER_REASON)
+				continue
+			}
+		}
+		// for configuration block, the steps below may be ignored.
+		//else {
+		//	rwsetProto, err := processNonEndorserTx(env, chdr.TxId, txType, txMgr, !doMVCCValidation)
+		//	if _, ok := err.(*customtx.InvalidTxError); ok {
+		//		txsFilter.SetFlag(txIndex, peer.TxValidationCode_INVALID_OTHER_REASON)
+		//		continue
+		//	}
+		//	if err != nil {
+		//		return nil, err
+		//	}
+		//	if rwsetProto != nil {
+		//		if txRWSet, err = rwsetutil.TxRwSetFromProtoMsg(rwsetProto); err != nil {
+		//			return nil, err
+		//		}
+		//	}
+		//}
+		if txRWSet != nil {
+			tx4mvcc := &fpgapb.Transaction4Mvcc{IndexInBlock: int32(txIndex), Id: chdr.TxId}
+			for _, rwset := range txRWSet.NsRwSets {
+				reads := rwset.KvRwSet.Reads
+				tx4mvcc.RdCount = uint32(len(reads))
+				tx4mvcc.Rs = make([]*fpgapb.TxRS, tx4mvcc.RdCount)
+				for i, rd := range reads {
+					tx4mvcc.Rs[i] = &fpgapb.TxRS{Key: rd.Key, Version: rd.Version}
+				}
+
+				writes := rwset.KvRwSet.Writes
+				tx4mvcc.WtCount = uint32(len(writes))
+				tx4mvcc.Ws = make([]*fpgapb.TxWS, tx4mvcc.WtCount)
+				for i, wt := range writes {
+					tx4mvcc.Ws[i] = &fpgapb.TxWS{Key:wt.Key, Value:wt.Value, IsDel:wt.IsDelete}
+				}
+			}
+			b.Txs = append(b.Txs, tx4mvcc)
+		} else {
+			logger.Infof("don't send configuration block for fpga mvcc")
+			return nil, txsStatInfo, nil
+		}
+	}
+	return b, txsStatInfo, nil
+}
+
 // CommitWithPvtData commits the block and the corresponding pvt data in an atomic operation
 func (l *kvLedger) CommitWithPvtData(pvtdataAndBlock *ledger.BlockAndPvtData) error {
 	var err error
@@ -299,9 +396,22 @@ func (l *kvLedger) CommitWithPvtData(pvtdataAndBlock *ledger.BlockAndPvtData) er
 
 	startBlockProcessing := time.Now()
 	logger.Debugf("[%s] Validating state for block [%d]", l.ledgerID, blockNo)
+
+	// TODO this part need to be deleted. txmgr.current will be set inside it.
 	txstatsInfo, err := l.txtmgmt.ValidateAndPrepare(pvtdataAndBlock, true)
 	if err != nil {
 		return err
+	}
+
+	block4mvcc, txstatsInfo, err := convertBlock4mvcc(block)
+	if err != nil {
+		logger.Panicf("convertBlock4mvcc failed!")
+	}
+	if block4mvcc != nil {
+		response := fpga.SendBlock4Mvcc(block4mvcc)
+		if !response.Result {
+			logger.Panicf("fpga mvcc failed!")
+		}
 	}
 	elapsedBlockProcessing := time.Since(startBlockProcessing)
 
@@ -314,6 +424,7 @@ func (l *kvLedger) CommitWithPvtData(pvtdataAndBlock *ledger.BlockAndPvtData) er
 	}
 	elapsedCommitBlockStorage := time.Since(startCommitBlockStorage)
 
+	// TODO fpga the following parts needs to be deleted. txmgr.current, which has been set before, will be used inside the following part.
 	startCommitState := time.Now()
 	logger.Debugf("[%s] Committing block [%d] transactions to state database", l.ledgerID, blockNo)
 	if err = l.txtmgmt.Commit(); err != nil {

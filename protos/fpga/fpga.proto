@@ -9,7 +9,7 @@ option go_package = "github.com/hyperledger/fabric/protos/fpga";
 
 package protos;
 
-//import "ledger/rwset/kvrwset/kv_rwset.proto";
+import "ledger/rwset/kvrwset/kv_rwset.proto";
 
 // Interface exported by the server.
 service Fpga {
@@ -35,12 +35,12 @@ message VsccResponse {
 //  ValidateAndPrepareBatch in state_base_validator.go
 
 message Block4mvcc {
-        uint32 num = 1;
+        uint64 num = 1;
         repeated Transaction4mvcc txs = 2;
 }
 
 message Transaction4mvcc {
-	uint64 index_in_block = 1;
+	int32 index_in_block = 1;
 	string id = 2;
         uint32 rd_count = 3;
         uint32 wt_count = 4;
@@ -50,12 +50,12 @@ message Transaction4mvcc {
 
 message TxRS {
         string key = 1;
-        string version = 2;
+        kvrwset.Version version = 2;
 }
 
 message TxWS {
         string key = 1;
-        string value = 2;
+        bytes value = 2;
         bool is_del = 3;
 }
 

@@ -114,9 +114,9 @@ func startSendBlock4MvccTaskPool() {
 			defer cancel()
 			response, err := sendBlock4MvccWorker.SendBlock4Mvcc(ctx, params.in)
 			if err != nil {
-				logger.Fatalf("%v.VerifySig4Vscc(_) = _, %v: ", sendBlock4MvccWorker, err)
+				logger.Fatalf("%v.SendBlock4Mvcc(_) = _, %v: ", sendBlock4MvccWorker, err)
 			}
-			logger.Infof("VerifySig4Vscc succeeded. in: %v, out: %v.", params.in, response)
+			logger.Infof("SendBlock4Mvcc succeeded. in: %v, out: %v.", params.in, response)
 			params.out <- response
 		}
 	}()
