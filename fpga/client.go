@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
+	"github.com/spf13/viper"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	"time"
@@ -96,7 +97,7 @@ func startVerifySigTaskPool() {
 					if err != nil {
 						logger.Fatalf("%v.VerifySig4Vscc(_) = _, %v: ", verifySigWorkers[i], err)
 					}
-					logger.Infof("VerifySig4Vscc succeeded. in: %v, out: %v.", params.in, response)
+					logger.Infof("VerifySig4Vscc succeeded. in: %v, out: %s.", params.in, response.String())
 					params.out <- response
 				}()
 			}

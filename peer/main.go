@@ -17,8 +17,6 @@ import (
 	"github.com/hyperledger/fabric/peer/common"
 	"github.com/hyperledger/fabric/peer/node"
 	"github.com/hyperledger/fabric/peer/version"
-	//"github.com/hyperledger/fabric/vendor/github.com/spf13/cobra"
-	//"github.com/hyperledger/fabric/vendor/github.com/spf13/viper"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

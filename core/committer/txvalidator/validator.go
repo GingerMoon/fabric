@@ -9,8 +9,6 @@ package txvalidator
 import (
 	"context"
 	"fmt"
-	"github.com/hyperledger/fabric/fpga"
-	//fpgapb"github.com/hyperledger/fabric/protos/fpga"
 	"time"
 
 	"github.com/golang/protobuf/proto"

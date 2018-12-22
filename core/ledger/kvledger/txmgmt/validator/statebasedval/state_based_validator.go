@@ -12,8 +12,6 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/validator/internal"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
-	"github.com/hyperledger/fabric/fpga"
-	fpgapb "github.com/hyperledger/fabric/protos/fpga"
 	"github.com/hyperledger/fabric/protos/ledger/rwset/kvrwset"
 	"github.com/hyperledger/fabric/protos/peer"
 )
@@ -88,41 +86,41 @@ func (v *Validator) preLoadCommittedVersionOfRSet(block *internal.Block) error {
 }
 
 // internal.Block is an internal package, hence cannot be accessed outside
-func convertBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc{
-	blockmvcc := new(fpgapb.Block4Mvcc)
-	blockmvcc.Num = block.Num
-
-	txs := make([]*fpgapb.Transaction4Mvcc, len(block.Txs))
-	for i, tx := range block.Txs {
-		txs[i] = &fpgapb.Transaction4Mvcc{}
-		txs[i].Id = tx.ID
-		txs[i].IndexInBlock = uint64(tx.IndexInBlock)
-                count = 0
-
-		txrs := make([]*fpgapb.TxRS, len(tx.RWSet.NsRwSets.CollHashedRwSets[0].HashedRwSet.hashed_reads))
-                for j, txr := range tx.RWSet.NsRwSets.CollHashedRwSets[0].HashedRwSet.hashed_reads {
-                        txrs[j] = &fpga.TxRS{}
-			txrs[j].key = txr.key
-			txrs[j].version = txr.version
-                        count++
-		}
-                txs[i].rd_count = count
-                count = 0
-                
-		txws := make([]*fpgapb.TxWS, len(tx.RWSet.NsRwSets.CollhashedRwSets[0].HashedRwSet.hashed_writes))
-                for j, txw := range tx.RWSet.NsRwSets.CollHashedRwSets[0].HashedRwSet.hashed_writes {
-                        txws[j] = &fpga.TxWS{}
-			txws[j].key = txw.key
-			txws[j].value = txw.value
-			txws[j].is_del = txw.is_del
-                        count++
-                }
-                txs[i].wt_count = count
-
-	}
-	blockmvcc.Txs = txs
-	return blockmvcc
-}
+//func convertBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc{
+//	blockmvcc := new(fpgapb.Block4Mvcc)
+//	blockmvcc.Num = block.Num
+//
+//	txs := make([]*fpgapb.Transaction4Mvcc, len(block.Txs))
+//	for i, tx := range block.Txs {
+//		txs[i] = &fpgapb.Transaction4Mvcc{}
+//		txs[i].Id = tx.ID
+//		txs[i].IndexInBlock = uint64(tx.IndexInBlock)
+//                count = 0
+//
+//		txrs := make([]*fpgapb.TxRS, len(tx.RWSet.NsRwSets.CollHashedRwSets[0].HashedRwSet.hashed_reads))
+//                for j, txr := range tx.RWSet.NsRwSets.CollHashedRwSets[0].HashedRwSet.hashed_reads {
+//                        txrs[j] = &fpga.TxRS{}
+//			txrs[j].key = txr.key
+//			txrs[j].version = txr.version
+//                        count++
+//		}
+//                txs[i].rd_count = count
+//                count = 0
+//
+//		txws := make([]*fpgapb.TxWS, len(tx.RWSet.NsRwSets.CollhashedRwSets[0].HashedRwSet.hashed_writes))
+//                for j, txw := range tx.RWSet.NsRwSets.CollHashedRwSets[0].HashedRwSet.hashed_writes {
+//                        txws[j] = &fpga.TxWS{}
+//			txws[j].key = txw.key
+//			txws[j].value = txw.value
+//			txws[j].is_del = txw.is_del
+//                        count++
+//                }
+//                txs[i].wt_count = count
+//
+//	}
+//	blockmvcc.Txs = txs
+//	return blockmvcc
+//}
 
 // ValidateAndPrepareBatch implements method in Validator interface
 func (v *Validator) ValidateAndPrepareBatch(block *internal.Block, doMVCCValidation bool) (*internal.PubAndHashUpdates, error) {
@@ -136,8 +134,8 @@ func (v *Validator) ValidateAndPrepareBatch(block *internal.Block, doMVCCValidat
 		}
 	}
 
-	response := fpga.SendBlock4Mvcc(convertBlock4mvcc(block))
-	logger.Infof("fpga.SendBlock4Mvcc response: %v", response)
+	//response := fpga.SendBlock4Mvcc(convertBlock4mvcc(block))
+	//logger.Infof("fpga.SendBlock4Mvcc response: %v", response)
 
 	updates := internal.NewPubAndHashUpdates()
 	for _, tx := range block.Txs {

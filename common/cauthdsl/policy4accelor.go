@@ -7,17 +7,17 @@ SPDX-License-Identifier: Apache-2.0
 package cauthdsl
 
 import (
-	"crypto/x509"
 	"encoding/base64"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/hyperledger/fabric/common/policies"
+	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/fpga"
-	fpgapb "github.com/hyperledger/fabric/protos/fpga"
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
+	fpgapb "github.com/hyperledger/fabric/protos/fpga"
 )
 
 type deserializeAndVerify4accelor struct {
@@ -48,35 +48,27 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 		cauthdslLogger.Panicf("programming error, Identity must be called prior to Verify")
 	}
 	identify := d.deserializedIdentity
-	//pubkey, err := identify.(Identity4Accelor).GetPublicKey()
 	pubkey, err := identify.GetPublicKey()
 	if err != nil {
 		cauthdslLogger.Panicf("sever error, unsupported public key found. for now only ecdsa public key is supported.")
 	}
 
-	// encode publick key
-	pubkeybytes, err := x509.MarshalPKIXPublicKey(pubkey)
+	r, s, err := utils.UnmarshalECDSASignature(d.signedData.Signature)
 	if err != nil {
-		cauthdslLogger.Panicf("Unable to marshal ECDSA public key: %v", err)
+		cauthdslLogger.Panicf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(d.signedData.Signature), err.Error())
 	}
-	pubkeybytes_encoded := pem.EncodeToMemory(&pem.Block{Type: "EC PUBLIC  KEY", Bytes: pubkeybytes})
-	signedData_encoded := base64.StdEncoding.EncodeToString(d.signedData.Data)
-	Signature_encoded := base64.StdEncoding.EncodeToString(d.signedData.Signature)
-	cauthdslLogger.Infof("the public key is %s. ", string(pubkeybytes_encoded), )
-	cauthdslLogger.Infof("the signed data is: %s. ", signedData_encoded)
-	cauthdslLogger.Infof("the signature is: %s. Now send to FPGA for verification.", Signature_encoded)
 
+	digest := base64.StdEncoding.EncodeToString(util.ComputeSHA256(d.signedData.Data))
 	response := fpga.VerifySig4Vscc(&fpgapb.VsccEnvelope{
-		PubkeybytesEncoded:string(pubkeybytes_encoded),
-		SignedDataEncoded: string(signedData_encoded),
-		SignatureEncoded : string(Signature_encoded)})
-	cauthdslLogger.Infof("fpga.VerifySig4Vscc response: %v", response)
+		SignR:r.String(),
+		SignS:s.String(),
+		PkX:pubkey.X.String(),
+		PkY:pubkey.Y.String(),
+		E:digest})
 
 	// for now, we don't support multiple channels because we can't get the channelID directly from here.
 	// and we don't want to add this parameter (channelID) to every function call in the whole call stack. We will redesign later.
-	valid := true
-	//return d.deserializedIdentity.Verify(d.signedData.Data, d.signedData.Signature)
-	if !valid {
+	if !response.Result {
 		return errors.New("The signature is invalid")
 	}
 	return nil

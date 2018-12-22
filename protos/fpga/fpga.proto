@@ -23,7 +23,7 @@ message VsccEnvelope {
 	string sign_s = 2;
 	string pk_x = 3;
 	string pk_y = 4;
-	string e = 5;
+	string e = 5; // digest (hash256)
 }
 
 message VsccResponse {
