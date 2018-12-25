@@ -9,6 +9,8 @@ import (
 	"google.golang.org/grpc"
 	"math/big"
 	"net"
+        "githun.com/golang/protobuf/proto"
+        "log"
 )
 
 func init() {
@@ -38,11 +40,33 @@ func (s *fpgaServer) VerifySig4Vscc(cxt context.Context, env *fpga.VsccEnvelope)
 	if !valid {
 		logger.Warnf("grpc server verify result: false")
 	}
+
+/*
+        // compose block_rpc data structure
+        BlockRequest bq
+
+        // serialize to stream
+        data, err := proto.Marshal()
+        if err != nil {
+            log.Fatalln("Marshal data error:", err)
+        }
+*/
 	return &fpga.VsccResponse{Result:valid}, nil
 }
 
 func (s *fpgaServer) SendBlock4Mvcc(context.Context, *fpga.Block4Mvcc) (*fpga.MvccResponse, error) {
 	logger.Infof("mock fpga  receive a SendBlock4Mvcc request")
+        
+        // compose block_rpc data structure
+        BlockRequest bq
+       
+
+        // serialize to stream
+        data, err := proto.Marshal(bq)
+        if err != nil {
+            log.Fatalln("Marshal data error:", err)
+        }
+
 	return &fpga.MvccResponse{Result:true}, nil
 }
 
