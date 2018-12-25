@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
 	fpgapb "github.com/hyperledger/fabric/protos/fpga"
+        "crypto/elliptic"
 )
 
 type deserializeAndVerify4accelor struct {
@@ -58,10 +59,13 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 		cauthdslLogger.Panicf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(d.signedData.Signature), err.Error())
 	}
 
+        // TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s. 
+        w = elliptic.P256().Inverse(s)
+
 	digest := base64.StdEncoding.EncodeToString(util.ComputeSHA256(d.signedData.Data))
 	response := fpga.VerifySig4Vscc(&fpgapb.VsccEnvelope{
 		SignR:r.String(),
-		SignS:s.String(),
+		SignS:w.String(),
 		PkX:pubkey.X.String(),
 		PkY:pubkey.Y.String(),
 		E:digest})
