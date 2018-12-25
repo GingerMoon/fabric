@@ -1,0 +1,81 @@
+syntax = "proto2";
+
+package protos;
+
+// The gPRC service definition.
+service BlockRPC {
+  // Sends a block
+  rpc SendBlockData (BlockRequest) returns (BlockReply) {}
+}
+
+// The request containing the block struct.
+message BlockRequest {
+    required uint64 block_id = 1;
+    required bool cold_start = 2;
+    required uint32 tx_count = 3;
+
+    // transaction
+    message Transaction {
+
+        message SignatureStruct {
+            required string sign_r = 1;
+            required string sign_w = 2;
+            required string pk_x = 3;
+            required string pk_y = 4;
+            required string e = 5;
+            optional bool   dbg_sg_valid = 6;
+        }
+
+        message ReadStruct {
+            required string key = 1;
+            required string version = 2;
+            optional string dbg_val = 3;
+            optional bool   dbg_is_del = 4;
+            optional bool   dbg_rd_valid = 5;
+        }
+
+        message WriteStruct {
+            required string key = 1;
+            required string value = 2;
+            required bool is_del = 3;
+            optional string cs_version = 4; // only for cold start
+        }
+
+        required string tx_id = 1;
+        required uint32 rd_count = 2;
+        required uint32 wt_count = 3;
+        required uint32 sg_count = 4;
+        optional bool   dbg_tx_valid = 5;
+
+        repeated SignatureStruct signatures = 6;
+        repeated ReadStruct reads = 7;
+        repeated WriteStruct writes = 8;
+    }
+
+    repeated Transaction tx = 4;
+    required uint32 crc = 5;
+}
+
+// The response containing the true or false Boolean value. 
+message BlockReply {
+
+    required uint64 block_id = 1;
+
+    // transaction
+    message TXReply {
+        required string tx_id = 1;
+        required bool tx_valid = 2;
+        required bool sg_valid = 3;
+
+        message ReadReply {
+            required string rd_key = 1;
+            required bool rd_valid = 2;
+        }
+        
+        repeated ReadReply rd_checks = 4;
+    }
+
+    repeated TXReply tx_replies = 2;
+}
+
+
