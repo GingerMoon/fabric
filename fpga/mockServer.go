@@ -51,7 +51,7 @@ func (s *fpgaServer) VerifySig4Vscc(cxt context.Context, env *fpga.VsccEnvelope)
         txs[0].TxId = ""
         txs[0].RdCount = 0
         txs[0].WtCount = 0
-        txs[0].SgCount = 1
+        txs[0].SigCount = 1
         txs[0].DbgTxValid = false
         
         BlockRequest_Transaction_SignatureStruct sig
@@ -66,7 +66,7 @@ func (s *fpgaServer) VerifySig4Vscc(cxt context.Context, env *fpga.VsccEnvelope)
         bq.Crc = 0x1234
 
         // serialize to stream
-        data, err := proto.Marshal()
+        data, err := proto.Marshal(bq)
         if err != nil {
             log.Fatalln("Marshal data error:", err)
         }
