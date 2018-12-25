@@ -6,13 +6,17 @@ import (
 	"crypto/elliptic"
 	"encoding/base64"
 	"github.com/hyperledger/fabric/protos/fpga"
+	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"math/big"
 	"net"
 )
 
 func init() {
-	go start()
+	viper.Set("mockserver", true)
+	if viper.GetBool("mockserver") {
+		go start()
+	}
 }
 
 type fpgaServer struct {

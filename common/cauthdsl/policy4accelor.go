@@ -15,10 +15,11 @@ import (
 	"github.com/hyperledger/fabric/common/policies"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/fpga"
+	"github.com/hyperledger/fabric/fpga/elliptic"
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
 	fpgapb "github.com/hyperledger/fabric/protos/fpga"
-        "crypto/elliptic"
+	"github.com/spf13/viper"
 )
 
 type deserializeAndVerify4accelor struct {
@@ -36,7 +37,6 @@ func (d *deserializeAndVerify4accelor) Identity() (Identity, error) {
 	d.deserializedIdentity = deserializedIdentity
 	return deserializedIdentity, nil
 }
-
 
 //type Identity4Accelor interface { // using another interface will cause the panic: interface conversion: *cache.cachedIdentity is not cauthdsl.Identity4Accelor: missing method GetPublicKey
 //	msp.Identity
@@ -59,16 +59,18 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 		cauthdslLogger.Panicf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(d.signedData.Signature), err.Error())
 	}
 
-        // TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s. 
-        w = elliptic.P256().Inverse(s)
-
 	digest := base64.StdEncoding.EncodeToString(util.ComputeSHA256(d.signedData.Data))
-	response := fpga.VerifySig4Vscc(&fpgapb.VsccEnvelope{
-		SignR:r.String(),
-		SignS:w.String(),
-		PkX:pubkey.X.String(),
-		PkY:pubkey.Y.String(),
-		E:digest})
+	env := &fpgapb.VsccEnvelope{
+		SignR: r.String(),
+		SignS: s.String(),
+		PkX:   pubkey.X.String(),
+		PkY:   pubkey.Y.String(),
+		E:     digest}
+	if !viper.GetBool("mockserver") {
+		// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
+		env.SignS = elliptic.P256().Inverse(s).String()
+	}
+	response := fpga.VerifySig4Vscc(env)
 
 	// for now, we don't support multiple channels because we can't get the channelID directly from here.
 	// and we don't want to add this parameter (channelID) to every function call in the whole call stack. We will redesign later.
