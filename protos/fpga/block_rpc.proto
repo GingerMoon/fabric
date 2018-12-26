@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package protos;
+package fpga;
 
 // The gPRC service definition.
 service BlockRPC {
