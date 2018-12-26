@@ -10,7 +10,7 @@ protoc --protoc_path=./ --protoc_path=whatever_path_to_fabric/protos
 
 syntax = "proto3";
 
-option go_package = "github.com/hyperledger/fabric/protos/fpga";
+//option go_package = "github.com/hyperledger/fabric/protos/fpga";
 
 package protos;
 

@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"math/big"
 	"net"
-        "githun.com/golang/protobuf/proto"
+        "github.com/golang/protobuf/proto"
         "log"
 )
 
