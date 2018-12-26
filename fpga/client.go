@@ -16,18 +16,18 @@ var (
 	serverAddr = "127.0.0.1:10000"
 
 	/*
-	for the time being, we only consider the scenario of 1 channel
-	since fabric handles blocks one by one (just as the name "block-chain" implies),
-	there is only 1 sendBlockSizeWorker and sendBlock4MvccWorker.
-	since fabric handles verify sig of txs in the block concurrently,
-	there are multiple verifySigWorkers
+		for the time being, we only consider the scenario of 1 channel
+		since fabric handles blocks one by one (just as the name "block-chain" implies),
+		there is only 1 sendBlockSizeWorker and sendBlock4MvccWorker.
+		since fabric handles verify sig of txs in the block concurrently,
+		there are multiple verifySigWorkers
 	*/
-	verifySigWorkers []pb.FpgaClient
+	verifySigWorkers     []pb.FpgaClient
 	sendBlock4MvccWorker pb.FpgaClient
 
 	verifySigWorkersSemaphore *semaphore.Weighted // used for verifySigTaskPool
 
-	verifySigTaskPool         chan *verifyTask
+	verifySigTaskPool      chan *verifyTask
 	sendBlock4MvccTaskPool chan *sendBlock4MvccTask
 )
 
@@ -40,13 +40,13 @@ func init() {
 }
 
 type verifyTask struct {
-	in *pb.VsccEnvelope
-	out chan <- *pb.VsccResponse
+	in  *pb.VsccEnvelope
+	out chan<- *pb.VsccResponse
 }
 
 type sendBlock4MvccTask struct {
-	in *pb.Block4Mvcc
-	out chan <- *pb.MvccResponse
+	in  *pb.Block4Mvcc
+	out chan<- *pb.MvccResponse
 }
 
 func createFpgaClient() pb.FpgaClient {
@@ -65,11 +65,11 @@ func initSendBlock4MvccWorkerWorker() {
 	sendBlock4MvccTaskPool = make(chan *sendBlock4MvccTask)
 }
 
-func initVerifySigWorkers () {
+func initVerifySigWorkers() {
 	nWorkers := viper.GetInt("peer.validatorPoolSize")
-        if nWorkers == 0 {
-            nWorkers = 12 // we do have 12 ECDSA engines on HW
-        }
+	if nWorkers == 0 {
+		nWorkers = 12 // we do have 12 ECDSA engines on HW
+	}
 	logger.Infof("peer.validatorPoolSize is: %d", nWorkers)
 	verifySigWorkers = make([]pb.FpgaClient, nWorkers)
 	for i := 0; i < len(verifySigWorkers); i++ {
@@ -78,7 +78,6 @@ func initVerifySigWorkers () {
 	verifySigTaskPool = make(chan *verifyTask, nWorkers)
 	verifySigWorkersSemaphore = semaphore.NewWeighted(int64(nWorkers))
 }
-
 
 func startVerifySigTaskPool() {
 	for i := 0; i < len(verifySigWorkers); i++ {
@@ -97,7 +96,7 @@ func startVerifySigTaskPool() {
 					if err != nil {
 						logger.Fatalf("%v.VerifySig4Vscc(_) = _, %v: ", verifySigWorkers[i], err)
 					}
-					logger.Infof("VerifySig4Vscc succeeded. in: %v, out: %s.", params.in, response.String())
+					logger.Debugf("VerifySig4Vscc succeeded. in: %v, out: %s.", params.in, response.String())
 					params.out <- response
 				}()
 			}
@@ -116,21 +115,20 @@ func startSendBlock4MvccTaskPool() {
 			if err != nil {
 				logger.Fatalf("%v.SendBlock4Mvcc(_) = _, %v: ", sendBlock4MvccWorker, err)
 			}
-			logger.Infof("SendBlock4Mvcc succeeded. in: %v, out: %v.", params.in, response)
+			logger.Debugf("SendBlock4Mvcc succeeded. in: %v, out: %v.", params.in, response)
 			params.out <- response
 		}
 	}()
 }
 
-
-func VerifySig4Vscc(in *pb.VsccEnvelope) (*pb.VsccResponse) {
+func VerifySig4Vscc(in *pb.VsccEnvelope) *pb.VsccResponse {
 	ch := make(chan *pb.VsccResponse)
 	verifySigTaskPool <- &verifyTask{in, ch}
-	return <- ch
+	return <-ch
 	//return nil
 }
 
-func SendBlock4Mvcc(in *pb.Block4Mvcc) (*pb.MvccResponse) {
+func SendBlock4Mvcc(in *pb.Block4Mvcc) *pb.MvccResponse {
 	ch := make(chan *pb.MvccResponse)
 	sendBlock4MvccTaskPool <- &sendBlock4MvccTask{in, ch}
 	return <-ch
