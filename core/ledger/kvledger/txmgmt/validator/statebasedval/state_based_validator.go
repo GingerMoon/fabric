@@ -6,7 +6,6 @@ SPDX-License-Identifier: Apache-2.0
 package statebasedval
 
 import (
-	"github.com/davecgh/go-spew/spew"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/privacyenabledstate"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
@@ -17,7 +16,6 @@ import (
 	fpgapb "github.com/hyperledger/fabric/protos/fpga"
 	"github.com/hyperledger/fabric/protos/ledger/rwset/kvrwset"
 	"github.com/hyperledger/fabric/protos/peer"
-	"os"
 )
 
 var logger = flogging.MustGetLogger("statebasedval")
@@ -91,22 +89,8 @@ func (v *Validator) preLoadCommittedVersionOfRSet(block *internal.Block) error {
 
 // internal.Block is an internal package, hence cannot be accessed outside
 func generateBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc {
-	logger.Infof("dumping internal.Block.......")
-	fo, err := os.Create("./dump4mvcc.log")
-	if err != nil {
-		panic(err)
-	}
-	// close fo on exit and check for its returned error
-	defer func() {
-		if err := fo.Close(); err != nil {
-			panic(err)
-		}
-	}()
-	spew.Fdump(fo, block)
-
 	blockmvcc := new(fpgapb.Block4Mvcc)
 	blockmvcc.Num = block.Num
-	logger.Infof("block number: %v", block.Num)
 
 	txs := make([]*fpgapb.Transaction4Mvcc, len(block.Txs))
 	for i, tx := range block.Txs {
@@ -114,39 +98,30 @@ func generateBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc {
 		txs[i].Id = tx.ID
 		txs[i].IndexInBlock = int32(tx.IndexInBlock)
 
-		logger.Infof("txId: %v, txIndex: %v", tx.ID, tx.IndexInBlock)
-
-		logger.Infof("NsRwSets len: %d", len(tx.RWSet.NsRwSets))
-
 		// the key of fpgapb.TxRS and fpgapb.TxWS need to be constructed by "namespace key".
 		// [stateleveldb] ApplyUpdates -> DEBU 160 Channel [mychannel]:
 		// Applying key(string)=[mycc 2] key(bytes)=[[]byte{0x6d, 0x79, 0x63, 0x63, 0x0, 0x32}]
-		for j, rwset := range tx.RWSet.NsRwSets {
-			logger.Infof("NsRwSets[%d]", j)
+		for _, rwset := range tx.RWSet.NsRwSets {
 
 			// read set
 			txs[i].RdCount += uint32(len(rwset.KvRwSet.Reads))
-			for k, e := range rwset.KvRwSet.Reads {
+			for _, e := range rwset.KvRwSet.Reads {
 				rs := &fpgapb.TxRS{}
 				rs.Key = rwset.NameSpace + " " + e.Key
 				rs.Version = e.Version
 				txs[i].Rs = append(txs[i].Rs, rs)
-				logger.Infof("reads[%v] - key: %v, version: %v", k, rs.Key, rs.Version)
 			}
 
 			// wirte set
 			txs[i].WtCount += uint32(len(rwset.KvRwSet.Writes))
-			for k, e := range rwset.KvRwSet.Writes {
+			for _, e := range rwset.KvRwSet.Writes {
 				ws := &fpgapb.TxWS{}
 				ws.Key = rwset.NameSpace + " " + e.Key
 				ws.Value = e.Value
 				ws.IsDel = e.IsDelete
 				txs[i].Ws = append(txs[i].Ws, ws)
-				logger.Infof("writes[%v] - key: %v, value: %v, isDel: %v]", k, ws.Key, ws.Value, ws.IsDel)
 			}
 		}
-		logger.Infof("txs[%v].RdCount:%v", i, txs[i].RdCount)
-		logger.Infof("txs[%v].WtCount:%v", i, txs[i].WtCount)
 	}
 	blockmvcc.Txs = txs
 	return blockmvcc

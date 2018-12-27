@@ -1,4 +1,4 @@
-syntax = "proto2";
+syntax = "proto3";
 
 package fpga;
 
@@ -10,42 +10,42 @@ service BlockRPC {
 
 // The request containing the block struct.
 message BlockRequest {
-    required uint64 block_id = 1;
-    required bool cold_start = 2;
-    required uint32 tx_count = 3;
+    uint64 block_id = 1;
+    bool cold_start = 2;
+    uint32 tx_count = 3;
 
     // transaction
     message Transaction {
 
         message SignatureStruct {
-            required string sign_r = 1;
-            required string sign_w = 2;
-            required string pk_x = 3;
-            required string pk_y = 4;
-            required string e = 5;
-            optional bool   dbg_sg_valid = 6;
+            string sign_r = 1;
+            string sign_w = 2;
+            string pk_x = 3;
+            string pk_y = 4;
+            string e = 5;
+            bool   dbg_sg_valid = 6;
         }
 
         message ReadStruct {
-            required string key = 1;
-            required string version = 2;
-            optional string dbg_val = 3;
-            optional bool   dbg_is_del = 4;
-            optional bool   dbg_rd_valid = 5;
+            string key = 1;
+            bytes version = 2; // 硬件version前64位bid, 后面256位是tid。不全的高位补零 from Shiwen // big endian from Xiaohan
+            string dbg_val = 3;
+            bool   dbg_is_del = 4;
+            bool   dbg_rd_valid = 5;
         }
 
         message WriteStruct {
-            required string key = 1;
-            required string value = 2;
-            required bool is_del = 3;
-            optional string cs_version = 4; // only for cold start
+            string key = 1;
+            bytes value = 2; // in Fabric, these fields (value, version) are bytes. They cannot be string because they are not valid utf-8. pb error: Marshal data error: proto: field "fpga.BlockRequest.Transaction.WriteStruct.Value" contains invalid UTF-8
+            bool is_del = 3;
+            bytes cs_version = 4; // only for cold start
         }
 
-        required string tx_id = 1;
-        required uint32 rd_count = 2;
-        required uint32 wt_count = 3;
-        required uint32 sg_count = 4;
-        optional bool   dbg_tx_valid = 5;
+        string tx_id = 1;
+        uint32 rd_count = 2;
+        uint32 wt_count = 3;
+        uint32 sg_count = 4;
+        bool   dbg_tx_valid = 5;
 
         repeated SignatureStruct signatures = 6;
         repeated ReadStruct reads = 7;
@@ -53,23 +53,23 @@ message BlockRequest {
     }
 
     repeated Transaction tx = 4;
-    required uint32 crc = 5;
+    uint32 crc = 5;
 }
 
 // The response containing the true or false Boolean value. 
 message BlockReply {
 
-    required uint64 block_id = 1;
+    uint64 block_id = 1;
 
     // transaction
     message TXReply {
-        required string tx_id = 1;
-        required bool tx_valid = 2;
-        required bool sg_valid = 3;
+        string tx_id = 1;
+        bool tx_valid = 2;
+        bool sg_valid = 3;
 
         message ReadReply {
-            required string rd_key = 1;
-            required bool rd_valid = 2;
+            string rd_key = 1;
+            bool rd_valid = 2;
         }
         
         repeated ReadReply rd_checks = 4;
