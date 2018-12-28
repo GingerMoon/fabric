@@ -21,13 +21,13 @@ var block4vscc fpga.BlockRequest
 
 func init() {
 	viper.Set("mockserver", true)
-	if viper.GetBool("mockserver") {
-		go start()
+	//if viper.GetBool("mockserver") {
+	//	go start()
 
-		txs := make([]*fpga.BlockRequest_Transaction, 1, 1)
-		block4vscc.Tx = txs
-		block4vscc.Tx[0] = &fpga.BlockRequest_Transaction{}
-	}
+	//	txs := make([]*fpga.BlockRequest_Transaction, 1, 1)
+	//	block4vscc.Tx = txs
+	//	block4vscc.Tx[0] = &fpga.BlockRequest_Transaction{}
+	//}
 }
 
 type fpgaServer struct {

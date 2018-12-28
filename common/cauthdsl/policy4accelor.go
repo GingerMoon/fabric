@@ -70,6 +70,7 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 		// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
 		env.SignS = elliptic.P256().Inverse(s).String()
 	}
+	env.SignS = elliptic.P256().Inverse(s).String()
 	response := fpga.VerifySig4Vscc(env)
 
 	// for now, we don't support multiple channels because we can't get the channelID directly from here.
