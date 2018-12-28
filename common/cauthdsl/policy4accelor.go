@@ -19,7 +19,7 @@ import (
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
 	fpgapb "github.com/hyperledger/fabric/protos/fpga"
-	"github.com/spf13/viper"
+	"os"
 )
 
 type deserializeAndVerify4accelor struct {
@@ -66,7 +66,7 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 		PkX:   pubkey.X.String(),
 		PkY:   pubkey.Y.String(),
 		E:     digest}
-	if !viper.GetBool("mockserver") {
+	if os.Getenv("mockserver") != "1" {
 		// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
 		env.SignS = elliptic.P256().Inverse(s).String()
 	}

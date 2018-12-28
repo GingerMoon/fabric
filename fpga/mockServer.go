@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/protos/fpga"
-	"github.com/spf13/viper"
 	"google.golang.org/grpc"
 	"log"
 	"math/big"
@@ -20,8 +19,8 @@ import (
 var block4vscc fpga.BlockRequest
 
 func init() {
-	viper.Set("mockserver", true)
-	if viper.GetBool("mockserver") {
+	logger.Infof("!!!!!!!!!!!!!!!!!!!!!!!!!--%v", os.Getenv("mockserver"))
+	if os.Getenv("mockserver") == "1" {
 		go start()
 
 		txs := make([]*fpga.BlockRequest_Transaction, 1, 1)
