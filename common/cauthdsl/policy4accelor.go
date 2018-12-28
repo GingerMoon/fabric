@@ -62,13 +62,13 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 	digest := base64.StdEncoding.EncodeToString(util.ComputeSHA256(d.signedData.Data))
 	env := &fpgapb.VsccEnvelope{
 		SignR: r.String(),
-		SignS: s.String(),
+		SignS: elliptic.P256().Inverse(s).String(),
 		PkX:   pubkey.X.String(),
 		PkY:   pubkey.Y.String(),
 		E:     digest}
-	if os.Getenv("mockserver") != "1" {
+	if os.Getenv("FPGA_MOCK") == "1" {
 		// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
-		env.SignS = elliptic.P256().Inverse(s).String()
+		env.SignS = s.String()
 	}
 	response := fpga.VerifySig4Vscc(env)
 

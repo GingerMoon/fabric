@@ -19,8 +19,7 @@ import (
 var block4vscc fpga.BlockRequest
 
 func init() {
-	logger.Infof("!!!!!!!!!!!!!!!!!!!!!!!!!--%v", os.Getenv("mockserver"))
-	if os.Getenv("mockserver") == "1" {
+	if os.Getenv("FPGA_MOCK") == "1" {
 		go start()
 
 		txs := make([]*fpga.BlockRequest_Transaction, 1, 1)

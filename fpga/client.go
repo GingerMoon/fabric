@@ -7,13 +7,14 @@ import (
 	"github.com/spf13/viper"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
+	"os"
 	"time"
 )
 
 var (
 	logger = flogging.MustGetLogger("fpga")
 
-	serverAddr = "127.0.0.1:10000"
+	serverAddr = os.Getenv("FPGA_SERVER_ADDR")
 
 	/*
 		for the time being, we only consider the scenario of 1 channel
