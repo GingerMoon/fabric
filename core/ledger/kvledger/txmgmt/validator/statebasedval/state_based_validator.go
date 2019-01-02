@@ -95,7 +95,7 @@ func generateBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc {
 	txs := make([]*fpgapb.Transaction4Mvcc, len(block.Txs))
 	for i, tx := range block.Txs {
 		txs[i] = &fpgapb.Transaction4Mvcc{}
-		txs[i].Id = tx.ID
+		txs[i].Id = tx.ID // for those config tx, tx.ID is empty.
 		txs[i].IndexInBlock = int32(tx.IndexInBlock)
 
 		// the key of fpgapb.TxRS and fpgapb.TxWS need to be constructed by "namespace key".

@@ -44,15 +44,15 @@ message VsccResponse {
 //  ValidateAndPrepareBatch in state_base_validator.go
 
 message Block4mvcc {
-        uint64 num = 1;
+        uint64 num = 1; // it's blockId, NOT the number of transactions!
         repeated Transaction4mvcc txs = 2;
 }
 
 message Transaction4mvcc {
 	int32 index_in_block = 1;
-	string id = 2;
-        uint32 rd_count = 3;
-        uint32 wt_count = 4;
+	string id = 2; // for those config tx, tx.ID is empty.
+    uint32 rd_count = 3;
+    uint32 wt_count = 4;
 	repeated TxRS rs = 5;
 	repeated TxWS ws = 6;
 }
