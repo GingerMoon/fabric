@@ -18,11 +18,11 @@ message BlockRequest {
     message Transaction {
 
         message SignatureStruct {
-            string sign_r = 1;
-            string sign_w = 2;
-            string pk_x = 3;
-            string pk_y = 4;
-            string e = 5;
+            bytes sign_r = 1; // checked with Xiaohan and Shiwen, use bytes instead of string
+            bytes sign_w = 2;
+            bytes pk_x = 3;
+            bytes pk_y = 4;
+            bytes e = 5;
             bool   dbg_sg_valid = 6;
         }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"encoding/base64"
 	"encoding/binary"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/protos/fpga"
@@ -35,18 +34,17 @@ func (s *fpgaServer) VerifySig4Vscc(cxt context.Context, env *fpga.VsccEnvelope)
 	logger.Debugf("mock fpga  receive a VerifySig4Vscc request")
 
 	intR := big.Int{}
-	intR.SetString(env.SignR, 10)
+	intR.SetBytes(env.SignR)
 	intS := big.Int{}
-	intS.SetString(env.SignS, 10)
+	intS.SetBytes(env.SignS)
 
 	x := big.Int{}
-	x.SetString(env.PkX, 10)
+	x.SetBytes(env.PkX)
 	y := big.Int{}
-	y.SetString(env.PkY, 10)
+	y.SetBytes(env.PkY)
 	pubkey := ecdsa.PublicKey{elliptic.P256(), &x, &y}
 
-	digest, _ := base64.StdEncoding.DecodeString(env.E)
-	valid := ecdsa.Verify(&pubkey, digest, &intR, &intS)
+	valid := ecdsa.Verify(&pubkey, env.E, &intR, &intS)
 	if !valid {
 		logger.Warnf("grpc server verify result: false")
 	}
