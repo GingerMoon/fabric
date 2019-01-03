@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/x509"
 	"encoding/binary"
+	"encoding/pem"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/protos/fpga"
 	"google.golang.org/grpc"
@@ -16,6 +18,8 @@ import (
 )
 
 var block4vscc fpga.BlockRequest
+
+var pubkeysStatistic = make(map[string]int)
 
 func init() {
 	if os.Getenv("FPGA_MOCK") == "1" {
@@ -48,6 +52,11 @@ func (s *fpgaServer) VerifySig4Vscc(cxt context.Context, env *fpga.VsccEnvelope)
 	if !valid {
 		logger.Warnf("grpc server verify result: false")
 	}
+
+	pubkeybytes, _ := x509.MarshalPKIXPublicKey(&pubkey)
+	pubkeysStatistic[string(pem.EncodeToMemory(&pem.Block{Type: "EC PUBLIC KEY", Bytes: pubkeybytes}))]++
+	logger.Infof("Currently the amount of public keys is: %v", len(pubkeysStatistic))
+
 
 	// dump vscc for hw
 	block4vscc.Tx[0].SgCount++
