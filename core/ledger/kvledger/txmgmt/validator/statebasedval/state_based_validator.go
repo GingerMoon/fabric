@@ -6,7 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 package statebasedval
 
 import (
+	"encoding/base64"
 	"github.com/hyperledger/fabric/common/flogging"
+	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/privacyenabledstate"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/statedb"
@@ -89,20 +91,24 @@ func (v *Validator) preLoadCommittedVersionOfRSet(block *internal.Block) error {
 
 // internal.Block is an internal package, hence cannot be accessed outside
 func generateBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc {
+	logger.Debugf("generating block for mvcc...")
 	blockmvcc := new(fpgapb.Block4Mvcc)
 	blockmvcc.Num = block.Num
+	logger.Debugf("block number: %v", blockmvcc.Num)
 
 	txs := make([]*fpgapb.Transaction4Mvcc, len(block.Txs))
 	for i, tx := range block.Txs {
 		txs[i] = &fpgapb.Transaction4Mvcc{}
 		txs[i].Id = tx.ID // for those config tx, tx.ID is empty.
 		txs[i].IndexInBlock = int32(tx.IndexInBlock)
+		logger.Debugf("tx id: %v", txs[i].Id)
+		logger.Debugf("tx id index: %v", txs[i].IndexInBlock)
 
 		// the key of fpgapb.TxRS and fpgapb.TxWS need to be constructed by "namespace key".
 		// [stateleveldb] ApplyUpdates -> DEBU 160 Channel [mychannel]:
 		// Applying key(string)=[mycc 2] key(bytes)=[[]byte{0x6d, 0x79, 0x63, 0x63, 0x0, 0x32}]
 		for _, rwset := range tx.RWSet.NsRwSets {
-
+			logger.Debugf("namespace is %v.", rwset.NameSpace)
 			// read set
 			txs[i].RdCount += uint32(len(rwset.KvRwSet.Reads))
 			for _, e := range rwset.KvRwSet.Reads {
@@ -110,6 +116,7 @@ func generateBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc {
 				rs.Key = rwset.NameSpace + " " + e.Key
 				rs.Version = e.Version
 				txs[i].Rs = append(txs[i].Rs, rs)
+				logger.Debugf("txs(%v) rs: %+v appended to read set.", txs[i].Id, rs)
 			}
 
 			// wirte set
@@ -120,10 +127,15 @@ func generateBlock4mvcc(block *internal.Block) *fpgapb.Block4Mvcc {
 				ws.Value = e.Value
 				ws.IsDel = e.IsDelete
 				txs[i].Ws = append(txs[i].Ws, ws)
+				logger.Debugf("txs(%v) ws: {Key: %v, Value(base64 encoded hash): %v, IsDel: %v, } appended to write set.",
+					txs[i].Id, ws.Key, base64.StdEncoding.EncodeToString(util.ComputeSHA256(ws.Value)), ws.IsDel)
 			}
 		}
+		logger.Debugf("txs(%v) RdCount is %v.", txs[i].Id, txs[i].RdCount)
+		logger.Debugf("txs(%v) WtCount is %v.", txs[i].Id, txs[i].WtCount)
 	}
 	blockmvcc.Txs = txs
+	logger.Debugf("block for mvcc generated.")
 	return blockmvcc
 }
 
