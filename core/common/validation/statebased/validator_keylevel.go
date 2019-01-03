@@ -245,8 +245,6 @@ func (klv *KeyLevelValidator) Validate(cc string, blockNum, txNum uint64, rwsetB
 			}
 		}
 
-		// TODO accelor
-		logger.Fatalf("!!!!!!!!!!!!!!! accelor we haven't taken this situation into consideration (this might not be a problem since we called checkSBAndCCEP in nsRWSet.KvRwSet.Writes !!!!!!!!!!!!!!")
 		// public metadata writes
 		// we validate writes against key-level validation parameters
 		// if any are present or the chaincode-wide endorsement policy
