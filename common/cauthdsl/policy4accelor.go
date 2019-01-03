@@ -13,6 +13,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/hyperledger/fabric/common/policies"
+	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/fpga"
 	"github.com/hyperledger/fabric/fpga/elliptic"
 	"github.com/hyperledger/fabric/msp"
@@ -63,7 +64,7 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 		SignS: elliptic.P256().Inverse(s).Bytes(),
 		PkX:   pubkey.X.Bytes(),
 		PkY:   pubkey.Y.Bytes(),
-		E:     d.signedData.Data}
+		E:     util.ComputeSHA256(d.signedData.Data)}
 
 	if os.Getenv("FPGA_MOCK") == "1" {
 		// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
