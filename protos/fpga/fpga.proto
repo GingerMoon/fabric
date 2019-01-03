@@ -28,11 +28,11 @@ service Fpga {
 
 
 message VsccEnvelope {
-	string sign_r = 1;
-	string sign_s = 2;
-	string pk_x = 3;
-	string pk_y = 4;
-	string e = 5; // digest (hash256)
+	bytes sign_r = 1;
+	bytes sign_s = 2;
+	bytes pk_x = 3;
+	bytes pk_y = 4;
+	bytes e = 5; // digest (hash256)
 }
 
 message VsccResponse {

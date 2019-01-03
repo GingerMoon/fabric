@@ -13,7 +13,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/hyperledger/fabric/common/policies"
-	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/fpga"
 	"github.com/hyperledger/fabric/fpga/elliptic"
 	"github.com/hyperledger/fabric/msp"
@@ -59,16 +58,16 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 		cauthdslLogger.Panicf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(d.signedData.Signature), err.Error())
 	}
 
-	digest := base64.StdEncoding.EncodeToString(util.ComputeSHA256(d.signedData.Data))
 	env := &fpgapb.VsccEnvelope{
-		SignR: r.String(),
-		SignS: elliptic.P256().Inverse(s).String(),
-		PkX:   pubkey.X.String(),
-		PkY:   pubkey.Y.String(),
-		E:     digest}
+		SignR: r.Bytes(),
+		SignS: elliptic.P256().Inverse(s).Bytes(),
+		PkX:   pubkey.X.Bytes(),
+		PkY:   pubkey.Y.Bytes(),
+		E:     d.signedData.Data}
+
 	if os.Getenv("FPGA_MOCK") == "1" {
 		// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
-		env.SignS = s.String()
+		env.SignS = s.Bytes()
 	}
 	response := fpga.VerifySig4Vscc(env)
 
