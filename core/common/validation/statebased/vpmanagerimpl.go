@@ -77,6 +77,15 @@ func (d *txDependency) signalDepInserted() {
 // for namespace `ns` - possibly waiting for the corresponding call
 // to signalValidationResult to finish first.
 func (d *txDependency) waitForAndRetrieveValidationResult(ns string) error {
+	// TODO accelor
+	/*
+	github.com/hyperledger/fabric/core/handlers/validation/builtin/v13.(*Validator).Validate(0xc4241948c0, 0xc423fa3dc0, 0xc4234a9620, 0x4, 0x0, 0x0, 0xc423567830, 0x2c, 0x30, 0xc42596c080, ...)
+        C:/goworkspace/src/github.com/hyperledger/fabric/core/handlers/validation/builtin/v13/validation_logic.go:164 +0x266
+:190
+vscc.stateBasedValidator.PostValidate(namespace, block.Header.Number, uint64(txPosition), nil)
+transaction dependency -- when chaicode invokes other chaincode, the txDependency can happen.
+	*/
+	logger.Fatalf("!!!!!!!!!!!!!!! accelor we haven't taken this situation into consideration !!!!!!!!!!!!!!")
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
