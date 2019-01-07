@@ -51,7 +51,7 @@ func startSendBlock4MvccBlockRpcTaskPool() {
 			if err != nil {
 				logger.Fatalf("%v.SendBlock4MvccBlockRpc(_) = _, %v: ", sendBlock4MvccBlockRpcWorker, err)
 			}
-			logger.Debugf("SendBlock4MvccBlockRpc succeeded. in: %v, out: %v.", params.in, response)
+			//logger.Debugf("SendBlock4MvccBlockRpc succeeded. in: %v, out: %v.", params.in, response)
 			params.out <- response
 		}
 	}()

@@ -193,18 +193,18 @@ func (s *fpgaServer) SendBlockData(cxt context.Context, block *fpga.BlockRequest
 		logger.Debugf("tx[%d - %s]: RdCount is [%d]", tx.IndexInBlock, tx.TxId, tx.RdCount)
 		txReply.RdChecks = make([]*fpga.BlockReply_TXReply_ReadReply, tx.RdCount)
 		for i, read := range tx.Reads {
-			readReply := &fpga.BlockReply_TXReply_ReadReply{RdKey:read.Key, RdValid:false}
+			readReply := &fpga.BlockReply_TXReply_ReadReply{RdKey:read.Key, RdValid:true}
 			v, exists := dbKeyVersion[read.Key]
-			if !exists {
-				readReply.RdValid = true
-			} else {
+			if exists {
 				blkNumInput := binary.BigEndian.Uint64(read.Version[:8])
 				blkNumExisting := binary.BigEndian.Uint64(v[:8])
-				if blkNumInput == blkNumExisting {
+				if blkNumInput != blkNumExisting {
+					readReply.RdValid = false
+				} else {
 					txNumInput := binary.BigEndian.Uint64(read.Version[9:])
 					txNumExisting := binary.BigEndian.Uint64(v[9:])
-					if txNumInput == txNumExisting {
-						readReply.RdValid = true
+					if txNumInput != txNumExisting {
+						readReply.RdValid = false
 					}
 				}
 			}
@@ -217,6 +217,12 @@ func (s *fpgaServer) SendBlockData(cxt context.Context, block *fpga.BlockRequest
 			binary.BigEndian.PutUint64(versionBytes[:8], block.BlockId)
 			binary.BigEndian.PutUint64(versionBytes[9:], uint64(tx.IndexInBlock))
 			dbKeyVersion[write.Key] = versionBytes
+			logger.Debugf("updated dbKeyVersion: [key:%s - blockNum: %d - txIndex: %d]", write.Key, block.BlockId, tx.IndexInBlock)
+			v, _ := dbKeyVersion[write.Key]
+			blkNumExisting := binary.BigEndian.Uint64(v[:8])
+			txNumExisting := binary.BigEndian.Uint64(v[9:])
+			logger.Debugf("updated dbKeyVersion: [key:%s - blockNum: %d - txIndex: %d]", write.Key, blkNumExisting, txNumExisting)
+
 		}
 		reply.TxReplies[tx.IndexInBlock] = txReply
 	}

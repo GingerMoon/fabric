@@ -162,21 +162,51 @@ func (v *Validator) ValidateAndPrepareBatch(block *internal.Block, doMVCCValidat
 
 		for _, tx := range block.Txs {
 			txReply := reply.TxReplies[tx.IndexInBlock] // !!! TXReply need to be put in the indexInBlock position. Else Fabric will need to interate through the BlockReply.
-			if txReply.TxValid {
-				logger.Debugf("Block [%d] Transaction index [%d] TxId [%s] marked as valid by state validator", block.Num, tx.IndexInBlock, tx.ID)
-				committingTxHeight := version.NewHeight(block.Num, uint64(tx.IndexInBlock))
-				updates.ApplyWriteSet(tx.RWSet, committingTxHeight, v.db)
-			} else if !txReply.SgValid{ // vscc failed
+
+			if !txReply.SgValid{ // vscc failed
+				tx.ValidationCode = peer.TxValidationCode_INVALID_ENDORSER_TRANSACTION
 				logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is invalid signature",
 					block.Num, tx.IndexInBlock, tx.ID)
-			} else { // mvcc failed
-				for _, readReply := range txReply.RdChecks {
-					if !readReply.RdValid {
-						logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is read version conflict of the key [%s]",
-							block.Num, tx.IndexInBlock, tx.ID, readReply.RdKey)
-					}
+				continue
+			}
+
+			bMvcc := true
+			for _, readReply := range txReply.RdChecks {
+				if !readReply.RdValid {
+					logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is read version conflict of the key [%s]",
+						block.Num, tx.IndexInBlock, tx.ID, readReply.RdKey)
+					bMvcc = false
+					break
 				}
 			}
+			if !bMvcc {
+				tx.ValidationCode = peer.TxValidationCode_MVCC_READ_CONFLICT
+				continue
+			}
+
+			tx.ValidationCode = peer.TxValidationCode_VALID
+			logger.Debugf("Block [%d] Transaction index [%d] TxId [%s] marked as valid by state validator", block.Num, tx.IndexInBlock, tx.ID)
+			committingTxHeight := version.NewHeight(block.Num, uint64(tx.IndexInBlock))
+			updates.ApplyWriteSet(tx.RWSet, committingTxHeight, v.db)
+
+			//if txReply.TxValid {
+			//	tx.ValidationCode = peer.TxValidationCode_VALID
+			//	logger.Debugf("Block [%d] Transaction index [%d] TxId [%s] marked as valid by state validator", block.Num, tx.IndexInBlock, tx.ID)
+			//	committingTxHeight := version.NewHeight(block.Num, uint64(tx.IndexInBlock))
+			//	updates.ApplyWriteSet(tx.RWSet, committingTxHeight, v.db)
+			//} else if !txReply.SgValid{ // vscc failed
+			//	tx.ValidationCode = peer.TxValidationCode_INVALID_ENDORSER_TRANSACTION
+			//	logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is invalid signature",
+			//		block.Num, tx.IndexInBlock, tx.ID)
+			//} else { // mvcc failed
+			//	tx.ValidationCode = peer.TxValidationCode_MVCC_READ_CONFLICT
+			//	for _, readReply := range txReply.RdChecks {
+			//		if !readReply.RdValid {
+			//			logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is read version conflict of the key [%s]",
+			//				block.Num, tx.IndexInBlock, tx.ID, readReply.RdKey)
+			//		}
+			//	}
+			//}
 		}
 	}
 	//block4mvcc := generateBlock4mvcc(block)
