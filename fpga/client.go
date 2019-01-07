@@ -13,11 +13,14 @@ var (
 )
 
 func init() {
-	initVerifySigWorkers()
-	startVerifySigTaskPool()
+	//initVerifySigWorkers()
+	//startVerifySigTaskPool()
+	//
+	//initSendBlock4MvccWorkerWorker()
+	//startSendBlock4MvccTaskPool()
 
-	initSendBlock4MvccWorkerWorker()
-	startSendBlock4MvccTaskPool()
+	initSendBlock4MvccBlockRpcWorkerWorker()
+	startSendBlock4MvccBlockRpcTaskPool()
 }
 
 func createFpgaClient() pb.FpgaClient {

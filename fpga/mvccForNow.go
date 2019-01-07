@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric/fpga/elliptic"
 	"github.com/hyperledger/fabric/protos/utils"
 	bccsputl "github.com/hyperledger/fabric/bccsp/utils"
+	"os"
 	"time"
 )
 
@@ -56,20 +57,21 @@ func startSendBlock4MvccBlockRpcTaskPool() {
 	}()
 }
 
-func SendBlock4MvccBlockRpc(in *pb.BlockRequest) *pb.BlockReply {
+func SendBlock4MvccBlockRpc(block *common.Block) *pb.BlockReply {
+	in := generateBlock(block)
 	ch := make(chan *pb.BlockReply)
 	sendBlock4MvccBlockRpcTaskPool <- &sendBlock4MvccBlockRpcTask{in, ch}
 	return <-ch
-	//return nil
 }
 
-func GenerateBlock(block *common.Block) *pb.BlockRequest {
+func generateBlock(block *common.Block) *pb.BlockRequest {
 	b := &pb.BlockRequest{BlockId:block.Header.Number, ColdStart:true, Crc:0}
 	b.TxCount = uint32(len(block.Data.Data))
 	b.Tx = make([]*pb.BlockRequest_Transaction, b.TxCount)
 
 	for tIdx, d := range block.Data.Data { // block.Data.Data is Transaction?
 		tx := &pb.BlockRequest_Transaction{}
+		tx.IndexInBlock = uint32(tIdx)
 
 		// get envelop
 		if d == nil { // d is TransactionAction
@@ -181,6 +183,7 @@ func populateTx4vscc(tx *pb.BlockRequest_Transaction, txBytes []byte) {
 		data := make([]byte, len(prp)+len(endorsement.Endorser))
 		copy(data, prp)
 		copy(data[len(prp):], endorsement.Endorser)
+		sig.E = util.ComputeSHA256(data)
 
 		//signatureSet = append(signatureSet, &common.SignedData{
 		//	// set the data that is signed; concatenation of proposal response bytes and endorser ID
@@ -216,6 +219,10 @@ func populateTx4vscc(tx *pb.BlockRequest_Transaction, txBytes []byte) {
 		}
 		sig.SignR = r.Bytes()
 		sig.SignW = elliptic.P256().Inverse(s).Bytes()
+		if os.Getenv("FPGA_MOCK") == "1" {
+			// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
+			sig.SignW = s.Bytes()
+		}
 		tx.Signatures[sIdx] = sig
 	}
 }

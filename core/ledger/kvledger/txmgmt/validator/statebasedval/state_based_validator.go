@@ -151,34 +151,62 @@ func (v *Validator) ValidateAndPrepareBatch(block *internal.Block, doMVCCValidat
 		}
 	}
 
-	block4mvcc := generateBlock4mvcc(block)
-	if block4mvcc != nil {
-		response := fpga.SendBlock4Mvcc(block4mvcc)
-		if !response.Result {
-			logger.Panicf("fpga mvcc failed!")
-		}
-	}
-
 	updates := internal.NewPubAndHashUpdates()
-	// TODO when mvcc is ready, comment/uncomment the following code.
-	//return updates, nil
-	for _, tx := range block.Txs {
-		var validationCode peer.TxValidationCode
-		var err error
-		if validationCode, err = v.validateEndorserTX(tx.RWSet, doMVCCValidation, updates); err != nil {
-			return nil, err
-		}
+	if doMVCCValidation {
+		// in the original code,
+		// state_based_validator.go
+		// func (v *Validator) validateKVRead(ns string, kvRead *kvrwset.KVRead, updates *privacyenabledstate.PubUpdateBatch) (bool, error) {
+		//	if updates.Exists(ns, kvRead.Key) {
+		//		return false, nil
+		reply := fpga.SendBlock4MvccBlockRpc(block.CommonBlock)
 
-		tx.ValidationCode = validationCode
-		if validationCode == peer.TxValidationCode_VALID {
-			logger.Debugf("Block [%d] Transaction index [%d] TxId [%s] marked as valid by state validator", block.Num, tx.IndexInBlock, tx.ID)
-			committingTxHeight := version.NewHeight(block.Num, uint64(tx.IndexInBlock))
-			updates.ApplyWriteSet(tx.RWSet, committingTxHeight, v.db)
-		} else {
-			logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. Reason code [%s]",
-				block.Num, tx.IndexInBlock, tx.ID, validationCode.String())
+		for _, tx := range block.Txs {
+			txReply := reply.TxReplies[tx.IndexInBlock] // !!! TXReply need to be put in the indexInBlock position. Else Fabric will need to interate through the BlockReply.
+			if txReply.TxValid {
+				logger.Debugf("Block [%d] Transaction index [%d] TxId [%s] marked as valid by state validator", block.Num, tx.IndexInBlock, tx.ID)
+				committingTxHeight := version.NewHeight(block.Num, uint64(tx.IndexInBlock))
+				updates.ApplyWriteSet(tx.RWSet, committingTxHeight, v.db)
+			} else if !txReply.SgValid{ // vscc failed
+				logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is invalid signature",
+					block.Num, tx.IndexInBlock, tx.ID)
+			} else { // mvcc failed
+				for _, readReply := range txReply.RdChecks {
+					if !readReply.RdValid {
+						logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is read version conflict of the key [%s]",
+							block.Num, tx.IndexInBlock, tx.ID, readReply.RdKey)
+					}
+				}
+			}
 		}
 	}
+	//block4mvcc := generateBlock4mvcc(block)
+	//if block4mvcc != nil {
+	//	response := fpga.SendBlock4Mvcc(block4mvcc)
+	//	if !response.Result {
+	//		logger.Panicf("fpga mvcc failed!")
+	//	}
+	//}
+
+
+
+	// TODO when mvcc is ready, comment/uncomment the following code.
+	//for _, tx := range block.Txs {
+	//	var validationCode peer.TxValidationCode
+	//	var err error
+	//	if validationCode, err = v.validateEndorserTX(tx.RWSet, doMVCCValidation, updates); err != nil {
+	//		return nil, err
+	//	}
+	//
+	//	tx.ValidationCode = validationCode
+	//	if validationCode == peer.TxValidationCode_VALID {
+	//		logger.Debugf("Block [%d] Transaction index [%d] TxId [%s] marked as valid by state validator", block.Num, tx.IndexInBlock, tx.ID)
+	//		committingTxHeight := version.NewHeight(block.Num, uint64(tx.IndexInBlock))
+	//		updates.ApplyWriteSet(tx.RWSet, committingTxHeight, v.db)
+	//	} else {
+	//		logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. Reason code [%s]",
+	//			block.Num, tx.IndexInBlock, tx.ID, validationCode.String())
+	//	}
+	//}
 	return updates, nil
 }
 

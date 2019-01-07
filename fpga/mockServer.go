@@ -20,6 +20,7 @@ import (
 var block4vscc fpga.BlockRequest
 
 var pubkeysStatistic = make(map[string]int)
+var dbKeyVersion = make(map[string][]byte)
 
 func init() {
 	if os.Getenv("FPGA_MOCK") == "1" {
@@ -152,6 +153,76 @@ func (s *fpgaServer) SendBlock4Mvcc(cxt context.Context, env *fpga.Block4Mvcc) (
 	return &fpga.MvccResponse{Result: true}, nil
 }
 
+func (s *fpgaServer) SendBlockData(cxt context.Context, block *fpga.BlockRequest) (*fpga.BlockReply, error) {
+	logger.Debugf("mock fpga received a SendBlockData request: ")
+	logger.Debugf("Block Id is [%d]. The amount of txs is [%d]", block.BlockId, block.TxCount)
+	reply := &fpga.BlockReply{}
+	reply.BlockId = block.BlockId
+	reply.TxReplies = make([]*fpga.BlockReply_TXReply, block.TxCount)
+
+	for _, tx := range block.Tx {
+		txReply := &fpga.BlockReply_TXReply{}
+		txReply.TxId = tx.TxId
+		txReply.IndexInBlock = tx.IndexInBlock
+		txReply.TxValid = true
+		txReply.SgValid = true
+
+		// vscc
+		logger.Debugf("tx[%d - %s]: The amount of signatures is [%d]", tx.IndexInBlock, tx.TxId, len(tx.Signatures))
+		for i, sig := range tx.Signatures {
+			intR := big.Int{}
+			intR.SetBytes(sig.SignR)
+			intS := big.Int{}
+			intS.SetBytes(sig.SignW)
+
+			x := big.Int{}
+			x.SetBytes(sig.PkX)
+			y := big.Int{}
+			y.SetBytes(sig.PkY)
+			pubkey := ecdsa.PublicKey{elliptic.P256(), &x, &y}
+
+			valid := ecdsa.Verify(&pubkey, sig.E, &intR, &intS)
+			if !valid {
+				logger.Warnf("tx[%d] signature[%d] verification failed!", tx.IndexInBlock, i)
+				txReply.SgValid = false
+				break
+			}
+		}
+
+		// mvcc
+		logger.Debugf("tx[%d - %s]: RdCount is [%d]", tx.IndexInBlock, tx.TxId, tx.RdCount)
+		txReply.RdChecks = make([]*fpga.BlockReply_TXReply_ReadReply, tx.RdCount)
+		for i, read := range tx.Reads {
+			readReply := &fpga.BlockReply_TXReply_ReadReply{RdKey:read.Key, RdValid:false}
+			v, exists := dbKeyVersion[read.Key]
+			if !exists {
+				readReply.RdValid = true
+			} else {
+				blkNumInput := binary.BigEndian.Uint64(read.Version[:8])
+				blkNumExisting := binary.BigEndian.Uint64(v[:8])
+				if blkNumInput == blkNumExisting {
+					txNumInput := binary.BigEndian.Uint64(read.Version[9:])
+					txNumExisting := binary.BigEndian.Uint64(v[9:])
+					if txNumInput == txNumExisting {
+						readReply.RdValid = true
+					}
+				}
+			}
+			txReply.RdChecks[i] = readReply
+		}
+
+		logger.Debugf("tx[%d - %s]: WtCount is [%d]", tx.IndexInBlock, tx.TxId, tx.WtCount)
+		for _, write := range tx.Writes {
+			versionBytes := make([]byte, 40)
+			binary.BigEndian.PutUint64(versionBytes[:8], block.BlockId)
+			binary.BigEndian.PutUint64(versionBytes[9:], uint64(tx.IndexInBlock))
+			dbKeyVersion[write.Key] = versionBytes
+		}
+		reply.TxReplies[tx.IndexInBlock] = txReply
+	}
+	return reply, nil
+}
+
 func newServer() *fpgaServer {
 	s := &fpgaServer{}
 	return s
@@ -160,7 +231,8 @@ func newServer() *fpgaServer {
 func start() {
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
-	fpga.RegisterFpgaServer(grpcServer, newServer())
+	//fpga.RegisterFpgaServer(grpcServer, newServer())
+	fpga.RegisterBlockRPCServer(grpcServer, newServer())
 	logger.Debugf("start a fpga mock server.")
 	lis, err := net.Listen("tcp", "0.0.0.0:10000")
 	if err != nil {

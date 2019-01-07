@@ -11,6 +11,7 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/privacyenabledstate"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
+	"github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protos/peer"
 )
 
@@ -25,8 +26,9 @@ type Validator interface {
 // Block is used to used to hold the information from its proto format to a structure
 // that is more suitable/friendly for validation
 type Block struct {
-	Num uint64
-	Txs []*Transaction
+	Num         uint64
+	Txs         []*Transaction
+	CommonBlock *common.Block // added for accelor for mvcc
 }
 
 // Transaction is used to hold the information from its proto format to a structure
