@@ -42,14 +42,15 @@ message BlockRequest {
         }
 
         string tx_id = 1;
-        uint32 rd_count = 2;
-        uint32 wt_count = 3;
-        uint32 sg_count = 4;
-        bool   dbg_tx_valid = 5;
+        uint32 indexInBlock = 2;
+        uint32 rd_count = 3;
+        uint32 wt_count = 4;
+        uint32 sg_count = 5;
+        bool   dbg_tx_valid = 6;
 
-        repeated SignatureStruct signatures = 6;
-        repeated ReadStruct reads = 7;
-        repeated WriteStruct writes = 8;
+        repeated SignatureStruct signatures = 7;
+        repeated ReadStruct reads = 8;
+        repeated WriteStruct writes = 9;
     }
 
     repeated Transaction tx = 4;
@@ -64,15 +65,16 @@ message BlockReply {
     // transaction
     message TXReply {
         string tx_id = 1;
-        bool tx_valid = 2;
-        bool sg_valid = 3;
+        uint32 indexInBlock = 2;
+        bool tx_valid = 3;
+        bool sg_valid = 4;
 
         message ReadReply {
             string rd_key = 1;
             bool rd_valid = 2;
         }
         
-        repeated ReadReply rd_checks = 4;
+        repeated ReadReply rd_checks = 5; // TXReply need to be put in the indexInBlock position. Else Fabric will need to interate through the BlockReply.
     }
 
     repeated TXReply tx_replies = 2;

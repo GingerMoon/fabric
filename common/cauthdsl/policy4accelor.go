@@ -7,20 +7,17 @@ SPDX-License-Identifier: Apache-2.0
 package cauthdsl
 
 import (
+<<<<<<< HEAD
 	"encoding/base64"
 	"encoding/hex"
+=======
+>>>>>>> 16d30944b42e8b5a62bd51aee53d5305f90adbd3
 	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/hyperledger/fabric/common/policies"
-	"github.com/hyperledger/fabric/common/util"
-	"github.com/hyperledger/fabric/fpga"
-	"github.com/hyperledger/fabric/fpga/elliptic"
 	"github.com/hyperledger/fabric/msp"
 	cb "github.com/hyperledger/fabric/protos/common"
-	fpgapb "github.com/hyperledger/fabric/protos/fpga"
-	"os"
 )
 
 type deserializeAndVerify4accelor struct {
@@ -46,6 +43,7 @@ func (d *deserializeAndVerify4accelor) Identity() (Identity, error) {
 
 // the bccsp and Identity are extremely encapsulated hence it's very difficult to make modifications to the two modules.
 func (d *deserializeAndVerify4accelor) Verify() error {
+<<<<<<< HEAD
 	if d.deserializedIdentity == nil {
 		cauthdslLogger.Panicf("programming error, Identity must be called prior to Verify")
 	}
@@ -81,6 +79,40 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 	if !response.Result {
 		return errors.New("The signature is invalid")
 	}
+=======
+	//if d.deserializedIdentity == nil {
+	//	cauthdslLogger.Panicf("programming error, Identity must be called prior to Verify")
+	//}
+	//identify := d.deserializedIdentity
+	//pubkey, err := identify.GetPublicKey()
+	//if err != nil {
+	//	cauthdslLogger.Panicf("sever error, unsupported public key found. for now only ecdsa public key is supported.")
+	//}
+	//
+	//r, s, err := utils.UnmarshalECDSASignature(d.signedData.Signature)
+	//if err != nil {
+	//	cauthdslLogger.Panicf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(d.signedData.Signature), err.Error())
+	//}
+	//
+	//env := &fpgapb.VsccEnvelope{
+	//	SignR: r.Bytes(),
+	//	SignS: elliptic.P256().Inverse(s).Bytes(),
+	//	PkX:   pubkey.X.Bytes(),
+	//	PkY:   pubkey.Y.Bytes(),
+	//	E:     util.ComputeSHA256(d.signedData.Data)}
+	//
+	//if os.Getenv("FPGA_MOCK") == "1" {
+	//	// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
+	//	env.SignS = s.Bytes()
+	//}
+	//response := fpga.VerifySig4Vscc(env)
+	//
+	//// for now, we don't support multiple channels because we can't get the channelID directly from here.
+	//// and we don't want to add this parameter (channelID) to every function call in the whole call stack. We will redesign later.
+	//if !response.Result {
+	//	return errors.New("The signature is invalid")
+	//}
+>>>>>>> 16d30944b42e8b5a62bd51aee53d5305f90adbd3
 	return nil
 }
 
