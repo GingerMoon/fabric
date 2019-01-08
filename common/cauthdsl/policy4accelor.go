@@ -8,6 +8,7 @@ package cauthdsl
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
@@ -58,6 +59,9 @@ func (d *deserializeAndVerify4accelor) Verify() error {
 	if err != nil {
 		cauthdslLogger.Panicf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(d.signedData.Signature), err.Error())
 	}
+
+        encodedStr := hex.EncodeToString(r.Bytes())
+        cauthdslLogger.Infof("encoded hex signR is: %s", encodedStr);
 
 	env := &fpgapb.VsccEnvelope{
 		SignR: r.Bytes(),
