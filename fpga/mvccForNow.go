@@ -8,15 +8,13 @@ import (
 	"encoding/binary"
 	"encoding/pem"
 	"github.com/golang/protobuf/proto"
+	bccsputl "github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
 	"github.com/hyperledger/fabric/protos/common"
 	pb "github.com/hyperledger/fabric/protos/fpga"
 	m "github.com/hyperledger/fabric/protos/msp"
-	"github.com/hyperledger/fabric/fpga/elliptic"
 	"github.com/hyperledger/fabric/protos/utils"
-	bccsputl "github.com/hyperledger/fabric/bccsp/utils"
-	"os"
 	"time"
 )
 
@@ -218,11 +216,12 @@ func populateTx4vscc(tx *pb.BlockRequest_Transaction, txBytes []byte) {
 			logger.Fatalf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(endorsement.Signature), err.Error())
 		}
 		sig.SignR = r.Bytes()
-		sig.SignW = elliptic.P256().Inverse(s).Bytes()
-		if os.Getenv("FPGA_MOCK") == "1" {
-			// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
-			sig.SignW = s.Bytes()
-		}
+		sig.SignW = s.Bytes()
+		//sig.SignW = elliptic.P256().Inverse(s).Bytes()
+		//if os.Getenv("FPGA_MOCK") == "1" {
+		//	// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
+		//	sig.SignW = s.Bytes()
+		//}
 		tx.Signatures[sIdx] = sig
 	}
 }
