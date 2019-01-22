@@ -215,9 +215,9 @@ func (v *TxValidator) Validate(block *common.Block) error {
 
 	// if we operate with this capability, we mark invalid any transaction that has a txid
 	// which is equal to that of a previous tx in this block
-	if v.Support.Capabilities().ForbidDuplicateTXIdInBlock() {
-		markTXIdDuplicates(txidArray, txsfltr)
-	}
+	//if v.Support.Capabilities().ForbidDuplicateTXIdInBlock() {
+	//	markTXIdDuplicates(txidArray, txsfltr)
+	//}
 
 	// if we're here, all workers have completed validation and
 	// no error was reported; we set the tx filter and return
@@ -341,11 +341,11 @@ func (v *TxValidator) validateTx(req *blockValidationRequest, results chan<- *bl
 			txID = chdr.TxId
 
 			// Check duplicate transactions
-			erroneousResultEntry := v.checkTxIdDupsLedger(tIdx, chdr, v.Support.Ledger())
-			if erroneousResultEntry != nil {
-				results <- erroneousResultEntry
-				return
-			}
+			//erroneousResultEntry := v.checkTxIdDupsLedger(tIdx, chdr, v.Support.Ledger())
+			//if erroneousResultEntry != nil {
+			//	results <- erroneousResultEntry
+			//	return
+			//}
 
 			// Validate tx with vscc and policy
 			logger.Debug("Validating transaction vscc tx validate")
