@@ -11,10 +11,12 @@ import (
 	bccsputl "github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
+	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protos/common"
 	pb "github.com/hyperledger/fabric/protos/fpga"
 	m "github.com/hyperledger/fabric/protos/msp"
 	"github.com/hyperledger/fabric/protos/utils"
+	"github.com/pkg/errors"
 	"time"
 )
 
@@ -67,12 +69,12 @@ func generateBlock(block *common.Block) *pb.BlockRequest {
 	b.TxCount = uint32(len(block.Data.Data))
 	b.Tx = make([]*pb.BlockRequest_Transaction, b.TxCount)
 
-	for tIdx, d := range block.Data.Data { // block.Data.Data is Transaction?
+	for tIdx, d := range block.Data.Data { // block.Data.Data is Transaction array
 		tx := &pb.BlockRequest_Transaction{}
 		tx.IndexInBlock = uint32(tIdx)
 
 		// get envelop
-		if d == nil { // d is TransactionAction
+		if d == nil { // d is one Transaction
 			logger.Fatalf("d is nil! index is %v", tIdx)
 		}
 		env, err := utils.GetEnvelopeFromBlock(d)
@@ -100,6 +102,13 @@ func generateBlock(block *common.Block) *pb.BlockRequest {
 		if err != nil {
 			logger.Fatalf("nil channel header err %s", err)
 		}
+
+		shdr, err := utils.GetSignatureHeader(hdr.SignatureHeader)
+		if err != nil {
+			logger.Fatalf("nil signature header err %s", err)
+		}
+
+		populateTx4creatorCheck(tx, shdr.Creator, env.Signature, env.Payload, chdr.ChannelId)
 
 		// HeaderType_CONFIG has only mvcc, doesn't have vscc
 		if common.HeaderType(chdr.Type) == common.HeaderType_ENDORSER_TRANSACTION {
@@ -131,6 +140,53 @@ func generateBlock(block *common.Block) *pb.BlockRequest {
 	return b
 }
 
+//for now fpga only supports bccsp.SHA256. bccsp.SHA3_256 is not supported.
+func populateTx4creatorCheck(tx *pb.BlockRequest_Transaction, creatorBytes []byte, sigBytes []byte, msg []byte, ChainID string) error {
+	// check for nil argument
+	if creatorBytes == nil || sigBytes == nil || msg == nil {
+		return errors.New("nil arguments")
+	}
+
+	sig := &pb.BlockRequest_Transaction_SignatureStruct{}
+	sig.E = util.ComputeSHA256(msg)
+
+	r, s, err := bccsputl.UnmarshalECDSASignature(sigBytes)
+	if err != nil {
+		logger.Fatalf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(sigBytes), err.Error())
+	}
+	sig.SignR = r.Bytes()
+	sig.SignW = s.Bytes()
+
+
+	mspObj := mspmgmt.GetIdentityDeserializer(ChainID)
+	if mspObj == nil {
+		return errors.Errorf("could not get msp for channel [%s]", ChainID)
+	}
+
+	// get the identity of the creator
+	creator, err := mspObj.DeserializeIdentity(creatorBytes)
+	if err != nil {
+		return errors.WithMessage(err, "MSP error")
+	}
+
+	// the check has already been done in checkSignatureFromCreatorFpga
+	// ensure that creator is a valid certificate
+	//err = creator.Validate()
+	//if err != nil {
+	//	return errors.WithMessage(err, "creator certificate is not valid")
+	//}
+
+	pubkey, err := creator.GetPublicKey()
+	if err != nil {
+		logger.Fatalf("Expected *ecdsa.PublicKey.")
+	}
+	sig.PkX = pubkey.X.Bytes()
+	sig.PkY = pubkey.Y.Bytes()
+
+	tx.Signatures = append(tx.Signatures, sig)
+
+	return nil
+}
 
 func populateTx4vscc(tx *pb.BlockRequest_Transaction, txBytes []byte) {
 	//var wrNamespace []string
@@ -174,8 +230,7 @@ func populateTx4vscc(tx *pb.BlockRequest_Transaction, txBytes []byte) {
 	//respPayload, err := utils.GetChaincodeAction(pRespPayload.Extension)
 	//rwset := respPayload.Results
 
-	tx.Signatures = make([]*pb.BlockRequest_Transaction_SignatureStruct, len(endorsements))
-	for sIdx, endorsement := range endorsements {
+	for _, endorsement := range endorsements {
 		sig := &pb.BlockRequest_Transaction_SignatureStruct{}
 
 		data := make([]byte, len(prp)+len(endorsement.Endorser))
@@ -222,7 +277,7 @@ func populateTx4vscc(tx *pb.BlockRequest_Transaction, txBytes []byte) {
 		//	// TBD: Right now HW doesn't support inverse(), so we have to pass down w (a.k.a inversion of s) instead of s.
 		//	sig.SignW = s.Bytes()
 		//}
-		tx.Signatures[sIdx] = sig
+		tx.Signatures = append(tx.Signatures, sig)
 	}
 }
 

@@ -160,13 +160,19 @@ func (v *Validator) ValidateAndPrepareBatch(block *internal.Block, doMVCCValidat
 		//		return false, nil
 		reply := fpga.SendBlock4MvccBlockRpc(block.CommonBlock)
 
-		for _, tx := range block.Txs {
+		for i, tx := range block.Txs {
 			txReply := reply.TxReplies[tx.IndexInBlock] // !!! TXReply need to be put in the indexInBlock position. Else Fabric will need to interate through the BlockReply.
 
 			if !txReply.SgValid{ // vscc failed
-				tx.ValidationCode = peer.TxValidationCode_INVALID_ENDORSER_TRANSACTION
-				logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is invalid signature",
-					block.Num, tx.IndexInBlock, tx.ID)
+				if i == 0 {
+					tx.ValidationCode = peer.TxValidationCode_BAD_CREATOR_SIGNATURE
+					logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is invalid tx creator's signature",
+						block.Num, tx.IndexInBlock, tx.ID)
+				} else {
+					tx.ValidationCode = peer.TxValidationCode_INVALID_ENDORSER_TRANSACTION
+					logger.Warningf("Block [%d] Transaction index [%d] TxId [%s] marked as invalid by state validator. The reason is invalid signature",
+						block.Num, tx.IndexInBlock, tx.ID)
+				}
 				continue
 			}
 
