@@ -81,10 +81,6 @@ func (vscc *Validator) Validate(
 	actionPosition int,
 	policyBytes []byte,
 ) commonerrors.TxValidationError {
-	// TODO accelor
-	logger.Fatalf("!!!!!!!!!!!!!!! accelor we haven't taken this situation into consideration (this might not be a problem since we called checkSBAndCCEP in nsRWSet.KvRwSet.Writes !!!!!!!!!!!!!!")
-
-
 	// get the envelope...
 	env, err := utils.GetEnvelopeFromBlock(block.Data.Data[txPosition])
 	if err != nil {
