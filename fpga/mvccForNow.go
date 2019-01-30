@@ -65,7 +65,7 @@ func SendBlock4MvccBlockRpc(block *common.Block) *pb.BlockReply {
 }
 
 func generateBlock(block *common.Block) *pb.BlockRequest {
-	b := &pb.BlockRequest{BlockId:block.Header.Number, ColdStart:true, Crc:0}
+	b := &pb.BlockRequest{BlockId:block.Header.Number, ColdStart:false, Crc:0}
 	b.TxCount = uint32(len(block.Data.Data))
 	b.Tx = make([]*pb.BlockRequest_Transaction, b.TxCount)
 
