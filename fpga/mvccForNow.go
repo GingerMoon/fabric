@@ -108,7 +108,10 @@ func generateBlock(block *common.Block) *pb.BlockRequest {
 			logger.Fatalf("nil signature header err %s", err)
 		}
 
-		populateTx4creatorCheck(tx, shdr.Creator, env.Signature, env.Payload, chdr.ChannelId)
+		err = populateTx4creatorCheck(tx, shdr.Creator, env.Signature, env.Payload, chdr.ChannelId)
+		if err != nil {
+			logger.Errorf("check creator returns error: %s. Block id: %v", err.Error(), b.BlockId)
+		}
 
 		// HeaderType_CONFIG has only mvcc, doesn't have vscc
 		if common.HeaderType(chdr.Type) == common.HeaderType_ENDORSER_TRANSACTION {
