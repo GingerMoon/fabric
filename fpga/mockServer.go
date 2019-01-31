@@ -194,20 +194,21 @@ func (s *fpgaServer) SendBlockData(cxt context.Context, block *fpga.BlockRequest
 		txReply.RdChecks = make([]*fpga.BlockReply_TXReply_ReadReply, tx.RdCount)
 		for i, read := range tx.Reads {
 			readReply := &fpga.BlockReply_TXReply_ReadReply{RdKey:read.Key, RdValid:true}
-			v, exists := dbKeyVersion[read.Key]
-			if exists {
-				blkNumInput := binary.BigEndian.Uint64(read.Version[:8])
-				blkNumExisting := binary.BigEndian.Uint64(v[:8])
-				if blkNumInput != blkNumExisting {
-					readReply.RdValid = false
-				} else {
-					txNumInput := binary.BigEndian.Uint64(read.Version[9:])
-					txNumExisting := binary.BigEndian.Uint64(v[9:])
-					if txNumInput != txNumExisting {
-						readReply.RdValid = false
-					}
-				}
-			}
+			// For now mvcc now always returns true to keep the same behavior as hardware.
+			//v, exists := dbKeyVersion[read.Key]
+			//if exists {
+			//	blkNumInput := binary.BigEndian.Uint64(read.Version[:8])
+			//	blkNumExisting := binary.BigEndian.Uint64(v[:8])
+			//	if blkNumInput != blkNumExisting {
+			//		readReply.RdValid = false
+			//	} else {
+			//		txNumInput := binary.BigEndian.Uint64(read.Version[9:])
+			//		txNumExisting := binary.BigEndian.Uint64(v[9:])
+			//		if txNumInput != txNumExisting {
+			//			readReply.RdValid = false
+			//		}
+			//	}
+			//}
 			txReply.RdChecks[i] = readReply
 		}
 
