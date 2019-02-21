@@ -1,0 +1,20 @@
+You can replace your own executable binary "peer" with our executable binary peer directly.
+(Our peer is customized based on Fabric 1.4)
+
+Below are more details in case you want to build the customized peer by yourself.
+
+Prerequisites:
+Since the code change is based on Fabric 1.4, so the prerequisites are the same as Fabric 1.4:
+https://hyperledger-fabric.readthedocs.io/en/release-1.4/prereqs.html
+
+Repository:
+https://bitbucket.org/accelorteam/fabric/src/238c062c29a39b1ce1fbc1528c5095bb7b3fa69e/?at=feature%2Fvscc-mvcc
+
+Build steps (linux):
+1. mkdir $GOPATH/src/github.com/hyperledger
+2. cd $GOPATH/src/github.com/hyperledger
+3. git clone https://GingerMoon@bitbucket.org/accelorteam/fabric.git
+4. cd fabric/peer
+5. go build
+6. the executable binary file peer was generated under the current path.
+
