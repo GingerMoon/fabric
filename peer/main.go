@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package main
 
 import (
+	_ "github.com/hyperledger/fabric/tee"
 	_ "net/http/pprof"
 	"os"
 	"strings"
