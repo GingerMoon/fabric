@@ -8,6 +8,7 @@ package shim
 
 import (
 	"github.com/golang/protobuf/ptypes/timestamp"
+	pbtee "github.com/hyperledger/fabric/protos/tee"
 	"github.com/hyperledger/fabric/protos/ledger/queryresult"
 	pb "github.com/hyperledger/fabric/protos/peer"
 )
@@ -29,7 +30,7 @@ type Chaincode interface {
 // ChaincodeStubInterface is used by deployable chaincode apps to access and
 // modify their ledgers
 type ChaincodeStubInterface interface {
-	TeeExecute(args [][]byte) ([][]byte, error)
+	TeeExecute(elf []byte, plaintexts [][]byte, feed4decrytions []*pbtee.Feed4Decryption) (*pbtee.PlainCiphertexts, error)
 
 	// GetArgs returns the arguments intended for the chaincode Init and Invoke
 	// as an array of byte arrays.

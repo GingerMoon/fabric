@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric/core/comm"
 	"github.com/hyperledger/fabric/protos/ledger/queryresult"
 	pb "github.com/hyperledger/fabric/protos/peer"
+	pbtee "github.com/hyperledger/fabric/protos/tee"
 	"github.com/hyperledger/fabric/protos/utils"
 	logging "github.com/op/go-logging"
 	"github.com/pkg/errors"
@@ -943,8 +944,8 @@ func (iter *CommonIterator) Close() error {
 	return err
 }
 
-func (stub *ChaincodeStub) TeeExecute(args [][]byte) ([][]byte, error) {
-	return tee.Execute(args)
+func (stub *ChaincodeStub) TeeExecute(elf []byte, plaintexts [][]byte, feed4decrytions []*pbtee.Feed4Decryption) (*pbtee.PlainCiphertexts, error) {
+	return tee.Execute(elf, plaintexts, feed4decrytions)
 }
 
 // GetArgs documentation can be found in interfaces.go

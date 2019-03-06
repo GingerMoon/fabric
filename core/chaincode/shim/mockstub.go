@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric/common/util"
 	"github.com/hyperledger/fabric/protos/ledger/queryresult"
 	pb "github.com/hyperledger/fabric/protos/peer"
+	pbtee "github.com/hyperledger/fabric/protos/tee"
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
 )
@@ -77,7 +78,7 @@ func (stub *MockStub) GetChannelID() string {
 	return stub.ChannelID
 }
 
-func (stub *MockStub) TeeExecute(args [][]byte) ([][]byte, error) {
+func (stub *MockStub) TeeExecute(elf []byte, plaintexts [][]byte, feed4decrytions []*pbtee.Feed4Decryption) (*pbtee.PlainCiphertexts, error) {
 	return nil, nil
 }
 
