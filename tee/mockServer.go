@@ -15,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/tee"
 	"google.golang.org/grpc"
-	"io"
 	"math/big"
 	"net"
 	"os"
@@ -70,18 +69,24 @@ func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) 
 
 func (s *fpgaServer) Execute(ctx context.Context, args *pb.TeeArgs) (*pb.PlainCiphertexts, error) {
 
+	// decrypte the TEE execution args
 	ciphertextArgs, err := s.decryptExecuteArgs(args.PlainCipherTexts.Feed4Decryptions)
 	if err != nil {
 		return nil, err
 	}
 
+	// execution
 	elf := string(args.Elf)
 	if elf == "paymentCCtee" {
 		plaintexts, plaintexts2encrypted, err := paymentCCtee(args.PlainCipherTexts.Plaintexts[:], ciphertextArgs)
 		if err != nil {
 			return nil, err
 		}
-		feed4Decryptions, err := s.encryptReturnedArgs(plaintexts2encrypted)
+		// encrypt the confidential results. due to the blockchain rules, different HWs must use the same nonces for the encryption here
+		feed4Decryptions, err := s.encryptReturnedArgs(plaintexts2encrypted, args.Nonces)
+		if err != nil {
+			return nil, err
+		}
 		return &pb.PlainCiphertexts{Plaintexts:plaintexts, Feed4Decryptions:feed4Decryptions}, nil
 	} else {
 		return nil, errors.New(fmt.Sprintf("unsupported function call. ELF: %s", elf))
@@ -112,17 +117,17 @@ func (s *fpgaServer) decryptExecuteArgs(args []*pb.Feed4Decryption) ([][]byte, e
 	return results, nil
 }
 
-func (s *fpgaServer) encryptReturnedArgs(plaintexts [][]byte) ([]*pb.Feed4Decryption, error) {
+func (s *fpgaServer) encryptReturnedArgs(plaintexts, nonces [][]byte) ([]*pb.Feed4Decryption, error) {
+	if len(nonces) != len(plaintexts) {
+		return nil, errors.New(fmt.Sprintf(
+			"there is not enough nonces for encrypting the execution results. Expectd: %d nonces, actually got %d nonces",
+			len(plaintexts), len(nonces)))
+	}
+
 	results := make([]*pb.Feed4Decryption, len(plaintexts))
 	for i, plaintext := range plaintexts {
 		block, err := aes.NewCipher(s.datakey)
 		if err != nil {
-			panic(err.Error())
-		}
-
-		// Never use more than 2^32 random nonces with a given key because of the risk of a repeat.
-		nonce := make([]byte, 12)
-		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 			panic(err.Error())
 		}
 
@@ -131,8 +136,8 @@ func (s *fpgaServer) encryptReturnedArgs(plaintexts [][]byte) ([]*pb.Feed4Decryp
 			panic(err.Error())
 		}
 
-		ciphertext := aesgcm.Seal(nil, nonce, plaintext, nil)
-		results[i] = &pb.Feed4Decryption{Ciphertext:ciphertext, Nonce:nonce}
+		ciphertext := aesgcm.Seal(nil, nonces[i], plaintext, nil)
+		results[i] = &pb.Feed4Decryption{Ciphertext:ciphertext, Nonce:nonces[i]}
 	}
 	return results, nil
 }
