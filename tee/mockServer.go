@@ -18,6 +18,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"strconv"
 )
 
 var logger = flogging.MustGetLogger("tee")
@@ -88,6 +89,12 @@ func (s *fpgaServer) Execute(ctx context.Context, args *pb.TeeArgs) (*pb.PlainCi
 			return nil, err
 		}
 		return &pb.PlainCiphertexts{Plaintexts:plaintexts, Feed4Decryptions:feed4Decryptions}, nil
+	} else if elf == "compare" {
+		plaintexts, err := compare(ciphertextArgs)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.PlainCiphertexts{Plaintexts:plaintexts, Feed4Decryptions:nil}, nil
 	} else {
 		return nil, errors.New(fmt.Sprintf("unsupported function call. ELF: %s", elf))
 	}
@@ -165,6 +172,30 @@ func paymentCCtee(plaintextArgs [][]byte, ciphertextArgs [][]byte) (plaintext, c
 	ciphertext = append(ciphertext, bsB)
 
 	return nil, ciphertext, nil
+}
+
+func compare(ciphertextArgs [][]byte) (plaintext [][]byte, err error) {
+	if len(ciphertextArgs) != 2 {
+		return nil, errors.New("compare need 2 args!")
+	}
+	valueA, err := strconv.Atoi(string(ciphertextArgs[0]))
+	if err != nil {
+		return nil, errors.New("compare operand[0] should be number!")
+	}
+	valueB, err := strconv.Atoi(string(ciphertextArgs[1]))
+	if err != nil {
+		return nil, errors.New("compare operand[1] should be number!")
+	}
+
+	if valueA == valueB {
+		plaintext = append(plaintext, []byte("0"))
+	} else if valueA > valueB {
+		plaintext = append(plaintext, []byte("1"))
+	} else {
+		plaintext = append(plaintext, []byte("-1"))
+	}
+
+	return
 }
 
 func newServer() *fpgaServer {
