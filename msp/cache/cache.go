@@ -49,6 +49,11 @@ type cachedMSP struct {
 	satisfiesPrincipalCache *secondChanceCache
 }
 
+type FpgaCachedIdentity struct {
+	msp.Identity
+	cache *cachedMSP
+}
+
 type cachedIdentity struct {
 	msp.Identity
 	cache *cachedMSP

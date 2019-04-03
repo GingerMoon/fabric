@@ -9,6 +9,7 @@ package builtin
 import (
 	. "github.com/hyperledger/fabric/core/handlers/endorsement/api"
 	. "github.com/hyperledger/fabric/core/handlers/endorsement/api/identities"
+	"github.com/hyperledger/fabric/fpga"
 	"github.com/hyperledger/fabric/protos/peer"
 	"github.com/pkg/errors"
 )
@@ -45,7 +46,9 @@ func (e *DefaultEndorsement) Endorse(prpBytes []byte, sp *peer.SignedProposal) (
 	}
 
 	// sign the concatenation of the proposal response and the serialized endorser identity with this endorser's key
-	signature, err := signer.Sign(append(prpBytes, identityBytes...))
+	//fpgaSigner := (*msp.FpgaSigningidentity)(unsafe.Pointer(reflect.ValueOf(signer).Pointer()))
+	//signature, err := fpgaSigner.Sign(append(prpBytes, identityBytes...))
+	signature, err := fpga.FpgaEndorserSign(signer, append(prpBytes, identityBytes...))
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "could not sign the proposal response payload")
 	}

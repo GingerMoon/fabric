@@ -9,6 +9,7 @@ package cauthdsl
 import (
 	"errors"
 	"fmt"
+	"github.com/hyperledger/fabric/fpga"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/policies"
@@ -56,7 +57,10 @@ func (d *deserializeAndVerify) Verify() error {
 	if d.deserializedIdentity == nil {
 		cauthdslLogger.Panicf("programming error, Identity must be called prior to Verify")
 	}
-	return d.deserializedIdentity.Verify(d.signedData.Data, d.signedData.Signature)
+	//return d.deserializedIdentity.Verify(d.signedData.Data, d.signedData.Signature)
+	//fpgaId := (*msp.FpgaIdentity)(unsafe.Pointer(reflect.ValueOf(d.deserializedIdentity).Pointer()))
+	//return fpgaId.Verify(d.signedData.Data, d.signedData.Signature)
+	return fpga.FpgaEndorserVerify(d.deserializedIdentity, d.signedData.Data, d.signedData.Signature)
 }
 
 type provider struct {

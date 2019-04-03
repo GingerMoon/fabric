@@ -18,13 +18,13 @@ package validation
 
 import (
 	"bytes"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
+	"github.com/hyperledger/fabric/fpga"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/msp"
+	pbmsp "github.com/hyperledger/fabric/protos/msp"
 	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
 	"github.com/pkg/errors"
@@ -104,7 +104,7 @@ func ValidateProposalMessage(signedProp *pb.SignedProposal) (*pb.Proposal, *comm
 		// log the exact message on the peer but return a generic error message to
 		// avoid malicious users scanning for channels
 		putilsLogger.Warningf("channel [%s]: %s", chdr.ChannelId, err)
-		sId := &msp.SerializedIdentity{}
+		sId := &pbmsp.SerializedIdentity{}
 		err := proto.Unmarshal(shdr.Creator, sId)
 		if err != nil {
 			// log the error here as well but still only return the generic error
@@ -180,7 +180,10 @@ func checkSignatureFromCreator(creatorBytes []byte, sig []byte, msg []byte, Chai
 	putilsLogger.Debugf("creator is valid")
 
 	// validate the signature
-	err = creator.Verify(msg, sig)
+	//fpgaId := (*msp.FpgaIdentity)(unsafe.Pointer(reflect.ValueOf(creator).Pointer()))
+	//fpgaId.Verify(msg, sig)
+	err = fpga.FpgaEndorserVerify(creator, msg, sig)
+	//err = creator.Verify(msg, sig)
 	if err != nil {
 		return errors.WithMessage(err, "creator's signature over the proposal is not valid")
 	}

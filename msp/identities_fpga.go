@@ -14,21 +14,18 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
-	"runtime/debug"
-	"strings"
-	"time"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/bccsp"
-	"github.com/hyperledger/fabric/common/flogging"
+	"github.com/hyperledger/fabric/bccsp/utils"
 	"github.com/hyperledger/fabric/protos/msp"
 	"github.com/pkg/errors"
 	"go.uber.org/zap/zapcore"
+	"reflect"
+	"time"
+	"unsafe"
 )
 
-var mspIdentityLogger = flogging.MustGetLogger("msp.identity")
-
-type identity struct {
+type FpgaIdentity struct {
 	// id contains the identifier (MSPID and identity identifier) for this instance
 	id *IdentityIdentifier
 
@@ -42,64 +39,33 @@ type identity struct {
 	msp *bccspmsp
 }
 
-func newIdentity(cert *x509.Certificate, pk bccsp.Key, msp *bccspmsp) (Identity, error) {
-	if mspIdentityLogger.IsEnabledFor(zapcore.DebugLevel) {
-		mspIdentityLogger.Debugf("Creating identity instance for cert %s", certToPEM(cert))
-	}
-
-	// Sanitize first the certificate
-	cert, err := msp.sanitizeCert(cert)
-	if err != nil {
-		return nil, err
-	}
-
-	// Compute identity identifier
-
-	// Use the hash of the identity's certificate as id in the IdentityIdentifier
-	hashOpt, err := bccsp.GetHashOpt(msp.cryptoConfig.IdentityIdentifierHashFunction)
-	if err != nil {
-		return nil, errors.WithMessage(err, "failed getting hash function options")
-	}
-
-	digest, err := msp.bccsp.Hash(cert.Raw, hashOpt)
-	if err != nil {
-		return nil, errors.WithMessage(err, "failed hashing raw certificate to compute the id of the IdentityIdentifier")
-	}
-
-	id := &IdentityIdentifier{
-		Mspid: msp.name,
-		Id:    hex.EncodeToString(digest)}
-
-	return &identity{id: id, cert: cert, pk: pk, msp: msp}, nil
-}
-
 // ExpiresAt returns the time at which the Identity expires.
-func (id *identity) ExpiresAt() time.Time {
+func (id *FpgaIdentity) ExpiresAt() time.Time {
 	return id.cert.NotAfter
 }
 
 // SatisfiesPrincipal returns null if this instance matches the supplied principal or an error otherwise
-func (id *identity) SatisfiesPrincipal(principal *msp.MSPPrincipal) error {
+func (id *FpgaIdentity) SatisfiesPrincipal(principal *msp.MSPPrincipal) error {
 	return id.msp.SatisfiesPrincipal(id, principal)
 }
 
 // GetIdentifier returns the identifier (MSPID/IDID) for this instance
-func (id *identity) GetIdentifier() *IdentityIdentifier {
+func (id *FpgaIdentity) GetIdentifier() *IdentityIdentifier {
 	return id.id
 }
 
 // GetMSPIdentifier returns the MSP identifier for this instance
-func (id *identity) GetMSPIdentifier() string {
+func (id *FpgaIdentity) GetMSPIdentifier() string {
 	return id.id.Mspid
 }
 
 // Validate returns nil if this instance is a valid identity or an error otherwise
-func (id *identity) Validate() error {
+func (id *FpgaIdentity) Validate() error {
 	return id.msp.Validate(id)
 }
 
 // GetOrganizationalUnits returns the OU for this instance
-func (id *identity) GetOrganizationalUnits() []*OUIdentifier {
+func (id *FpgaIdentity) GetOrganizationalUnits() []*OUIdentifier {
 	if id.cert == nil {
 		return nil
 	}
@@ -123,33 +89,14 @@ func (id *identity) GetOrganizationalUnits() []*OUIdentifier {
 }
 
 // Anonymous returns true if this identity provides anonymity
-func (id *identity) Anonymous() bool {
+func (id *FpgaIdentity) Anonymous() bool {
 	return false
-}
-
-// NewSerializedIdentity returns a serialized identity
-// having as content the passed mspID and x509 certificate in PEM format.
-// This method does not check the validity of certificate nor
-// any consistency of the mspID with it.
-func NewSerializedIdentity(mspID string, certPEM []byte) ([]byte, error) {
-	// We serialize identities by prepending the MSPID
-	// and appending the x509 cert in PEM format
-	sId := &msp.SerializedIdentity{Mspid: mspID, IdBytes: certPEM}
-	raw, err := proto.Marshal(sId)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed serializing identity [%s][%X]", mspID, certPEM)
-	}
-	return raw, nil
 }
 
 // Verify checks against a signature and a message
 // to determine whether this identity produced the
 // signature; it returns nil if so or an error otherwise
-func (id *identity) Verify(msg []byte, sig []byte) error {
-	stack := debug.Stack()
-	if !strings.Contains(string(stack), "gossip") && !strings.Contains(string(stack), "discovery") {
-		debug.PrintStack()
-	}
+func (id *FpgaIdentity) Verify(msg []byte, sig []byte) error {
 	// mspIdentityLogger.Infof("Verifying signature")
 
 	// Compute Hash
@@ -179,7 +126,7 @@ func (id *identity) Verify(msg []byte, sig []byte) error {
 }
 
 // Added for Accelor
-func (id *identity) GetPublicKey() (*ecdsa.PublicKey, error) {
+func (id *FpgaIdentity) GetPublicKey() (*ecdsa.PublicKey, error) {
 	pk := id.cert.PublicKey
 
 	switch pk.(type) {
@@ -193,7 +140,7 @@ func (id *identity) GetPublicKey() (*ecdsa.PublicKey, error) {
 }
 
 // Serialize returns a byte array representation of this identity
-func (id *identity) Serialize() ([]byte, error) {
+func (id *FpgaIdentity) Serialize() ([]byte, error) {
 	// mspIdentityLogger.Infof("Serializing identity %s", id.id)
 
 	pb := &pem.Block{Bytes: id.cert.Raw, Type: "CERTIFICATE"}
@@ -212,7 +159,7 @@ func (id *identity) Serialize() ([]byte, error) {
 	return idBytes, nil
 }
 
-func (id *identity) getHashOpt(hashFamily string) (bccsp.HashOpts, error) {
+func (id *FpgaIdentity) getHashOpt(hashFamily string) (bccsp.HashOpts, error) {
 	switch hashFamily {
 	case bccsp.SHA2:
 		return bccsp.GetHashOpt(bccsp.SHA256)
@@ -222,29 +169,16 @@ func (id *identity) getHashOpt(hashFamily string) (bccsp.HashOpts, error) {
 	return nil, errors.Errorf("hash familiy not recognized [%s]", hashFamily)
 }
 
-type signingidentity struct {
+type FpgaSigningidentity struct {
 	// we embed everything from a base identity
-	identity
+	FpgaIdentity
 
 	// signer corresponds to the object that can produce signatures from this identity
-	signer crypto.Signer
-}
-
-func newSigningIdentity(cert *x509.Certificate, pk bccsp.Key, signer crypto.Signer, msp *bccspmsp) (SigningIdentity, error) {
-	//mspIdentityLogger.Infof("Creating signing identity instance for ID %s", id)
-	mspId, err := newIdentity(cert, pk, msp)
-	if err != nil {
-		return nil, err
-	}
-	return &signingidentity{identity: *mspId.(*identity), signer: signer}, nil
+	Signer crypto.Signer
 }
 
 // Sign produces a signature over msg, signed by this instance
-func (id *signingidentity) Sign(msg []byte) ([]byte, error) {
-	stack := debug.Stack()
-	if !strings.Contains(string(stack), "gossip") && !strings.Contains(string(stack), "discovery") {
-		debug.PrintStack()
-	}
+func (id *FpgaSigningidentity) Sign(msg []byte) ([]byte, error) {
 	//mspIdentityLogger.Infof("Signing message")
 
 	// Compute Hash
@@ -265,12 +199,21 @@ func (id *signingidentity) Sign(msg []byte) ([]byte, error) {
 	}
 	mspIdentityLogger.Debugf("Sign: digest: %X \n", digest)
 
-	// Sign
-	return id.signer.Sign(rand.Reader, digest, nil)
-}
+	fpgaCryptoSigner := (*fpgaCryptoSigner)(unsafe.Pointer(reflect.ValueOf(id.Signer).Pointer()))
+	mspPrikey := (*ecdsaPrivateKey)(unsafe.Pointer(reflect.ValueOf(fpgaCryptoSigner.key).Pointer()))
+	prikey := mspPrikey.privKey
 
-// GetPublicVersion returns the public version of this identity,
-// namely, the one that is only able to verify messages and not sign them
-func (id *signingidentity) GetPublicVersion() Identity {
-	return &id.identity
+
+	// Sign
+	r, s, err := ecdsa.Sign(rand.Reader, prikey, digest)
+	if err != nil {
+		return nil, err
+	}
+	s, _, err = utils.ToLowS(&prikey.PublicKey, s)
+	if err != nil {
+		return nil, err
+	}
+	return utils.MarshalECDSASignature(r, s)
+
+	//return id.Signer.Sign(rand.Reader, digest, nil)
 }
