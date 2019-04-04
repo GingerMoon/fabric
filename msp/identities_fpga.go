@@ -9,17 +9,18 @@ package msp
 import (
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/utils"
+	"github.com/hyperledger/fabric/fpga"
+	pb "github.com/hyperledger/fabric/protos/fpga"
 	"github.com/hyperledger/fabric/protos/msp"
 	"github.com/pkg/errors"
-	"go.uber.org/zap/zapcore"
+	"math/big"
 	"reflect"
 	"time"
 	"unsafe"
@@ -97,7 +98,6 @@ func (id *FpgaIdentity) Anonymous() bool {
 // to determine whether this identity produced the
 // signature; it returns nil if so or an error otherwise
 func (id *FpgaIdentity) Verify(msg []byte, sig []byte) error {
-	// mspIdentityLogger.Infof("Verifying signature")
 
 	// Compute Hash
 	hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
@@ -110,18 +110,30 @@ func (id *FpgaIdentity) Verify(msg []byte, sig []byte) error {
 		return errors.WithMessage(err, "failed computing digest")
 	}
 
-	if mspIdentityLogger.IsEnabledFor(zapcore.DebugLevel) {
-		mspIdentityLogger.Debugf("Verify: digest = %s", hex.Dump(digest))
-		mspIdentityLogger.Debugf("Verify: sig = %s", hex.Dump(sig))
+	r, s, err := utils.UnmarshalECDSASignature(sig)
+	if err != nil {
+		return errors.WithMessage(err, "failed UnmarshalECDSASignature")
 	}
 
-	valid, err := id.msp.bccsp.Verify(id.pk, sig, digest, nil)
+	if reflect.TypeOf(id.pk).String() != "*sw.ecdsaPublicKey" {
+		panic(fmt.Sprintf("expected identity's publilc key type: *sw.ecdsaPublicKey, but got %s", reflect.TypeOf(id.pk).String()))
+	}
+	pk := (*ecdsaPublicKey)(unsafe.Pointer(reflect.ValueOf(id.pk).Pointer()))
+
+	pubkey := pk.pubKey
+	lowS, err := utils.IsLowS(pubkey, s)
 	if err != nil {
-		return errors.WithMessage(err, "could not determine the validity of the signature")
-	} else if !valid {
+		return errors.WithMessage(err, "failed IsLowS")
+	}
+	if !lowS {
+		return errors.WithMessage(err, fmt.Sprintf("Invalid S. Must be smaller than half the order [%s][%s].", s, utils.GetCurveHalfOrdersAt(pubkey.Curve)))
+	}
+
+	in := &pb.VerifyReq{SignR:r.Bytes(), SignS:s.Bytes(), Px:pubkey.X.Bytes(), Hash:digest, Py:pubkey.Y.Bytes()}
+	valid := fpga.EndorserVerify(in)
+	if !valid {
 		return errors.New("The signature is invalid")
 	}
-
 	return nil
 }
 
@@ -179,7 +191,19 @@ type FpgaSigningidentity struct {
 
 // Sign produces a signature over msg, signed by this instance
 func (id *FpgaSigningidentity) Sign(msg []byte) ([]byte, error) {
-	//mspIdentityLogger.Infof("Signing message")
+
+	// get the private key
+	if reflect.TypeOf(id.Signer).String() != "*signer.bccspCryptoSigner" {
+		mspIdentityLogger.Fatalf(reflect.TypeOf(id.Signer).String())
+	}
+	fpgaCryptoSigner := (*fpgaCryptoSigner)(unsafe.Pointer(reflect.ValueOf(id.Signer).Pointer()))
+
+	if reflect.TypeOf(fpgaCryptoSigner.key).String() != "*sw.ecdsaPrivateKey" {
+		mspIdentityLogger.Fatalf(reflect.TypeOf(fpgaCryptoSigner.key).String())
+	}
+	mspPrikey := (*ecdsaPrivateKey)(unsafe.Pointer(reflect.ValueOf(fpgaCryptoSigner.key).Pointer()))
+
+	privkey := mspPrikey.privKey
 
 	// Compute Hash
 	hashOpt, err := id.getHashOpt(id.msp.cryptoConfig.SignatureHashFamily)
@@ -187,33 +211,23 @@ func (id *FpgaSigningidentity) Sign(msg []byte) ([]byte, error) {
 		return nil, errors.WithMessage(err, "failed getting hash function options")
 	}
 
-	digest, err := id.msp.bccsp.Hash(msg, hashOpt)
+	hash, err := id.msp.bccsp.Hash(msg, hashOpt)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed computing digest")
 	}
 
-	if len(msg) < 32 {
-		mspIdentityLogger.Debugf("Sign: plaintext: %X \n", msg)
-	} else {
-		mspIdentityLogger.Debugf("Sign: plaintext: %X...%X \n", msg[0:16], msg[len(msg)-16:])
-	}
-	mspIdentityLogger.Debugf("Sign: digest: %X \n", digest)
+	// fpga endorser sign
+	in := &pb.SignReq{D: privkey.D.Bytes(), Hash: hash}
+	signature := fpga.EndorserSign(in)
 
-	fpgaCryptoSigner := (*fpgaCryptoSigner)(unsafe.Pointer(reflect.ValueOf(id.Signer).Pointer()))
-	mspPrikey := (*ecdsaPrivateKey)(unsafe.Pointer(reflect.ValueOf(fpgaCryptoSigner.key).Pointer()))
-	prikey := mspPrikey.privKey
-
-
-	// Sign
-	r, s, err := ecdsa.Sign(rand.Reader, prikey, digest)
+	// marshall signature
+	s := &big.Int{}
+	s.SetBytes(signature.SignS)
+	s, _, err = utils.ToLowS(&privkey.PublicKey, s)
 	if err != nil {
 		return nil, err
 	}
-	s, _, err = utils.ToLowS(&prikey.PublicKey, s)
-	if err != nil {
-		return nil, err
-	}
+	r := &big.Int{}
+	r.SetBytes(signature.SignR)
 	return utils.MarshalECDSASignature(r, s)
-
-	//return id.Signer.Sign(rand.Reader, digest, nil)
 }

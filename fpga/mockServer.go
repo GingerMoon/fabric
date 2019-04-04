@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/pem"
@@ -24,6 +25,7 @@ var dbKeyVersion = make(map[string][]byte)
 
 func init() {
 	if os.Getenv("FPGA_MOCK") == "1" {
+		logger.Infof("going to start the mockserver")
 		go start()
 
 		txs := make([]*fpga.BlockRequest_Transaction, 1, 1)
@@ -33,6 +35,53 @@ func init() {
 }
 
 type fpgaServer struct {
+}
+
+
+func (s *fpgaServer) EndorserSign(cxt context.Context, env *fpga.EndorserSignRequest) (*fpga.EndorserSignReply, error) {
+	logger.Debugf("mock fpga  receive a EndorserSign request")
+	reply := &fpga.EndorserSignReply{}
+
+	for _, request := range env.SignReqs {
+		d := &big.Int{}
+		d.SetBytes(request.D)
+		privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		privateKey.D = d
+
+		r, s, err := ecdsa.Sign(rand.Reader, privateKey, request.Hash)
+		if err != nil {
+			return nil, err
+		}
+		signature := &fpga.SignResult{ReqId: request.ReqId, SignR:r.Bytes(), SignS:s.Bytes()}
+		reply.SignResults = append(reply.SignResults, signature)
+	}
+	return reply, nil
+}
+
+func (s *fpgaServer) EndorserVerify(cxt context.Context, env *fpga.EndorserVerifyRequest) (*fpga.EndorserVerifyReply, error) {
+	logger.Debugf("mock fpga  receive a EndorserVerify request")
+	reply := &fpga.EndorserVerifyReply{}
+
+	for _, request := range env.VerifyReqs {
+		intR := big.Int{}
+		intR.SetBytes(request.SignR)
+		intS := big.Int{}
+		intS.SetBytes(request.SignS)
+
+		x := big.Int{}
+		x.SetBytes(request.Px)
+		y := big.Int{}
+		y.SetBytes(request.Py)
+		pubkey := ecdsa.PublicKey{elliptic.P256(), &x, &y}
+
+		valid := ecdsa.Verify(&pubkey, request.Hash, &intR, &intS)
+		if !valid {
+			logger.Warnf("grpc server verify result: false")
+		}
+		result := &fpga.VerifyResult{ReqId:request.ReqId, Valid:valid}
+		reply.VerifyResults = append(reply.VerifyResults, result)
+	}
+	return reply, nil
 }
 
 func (s *fpgaServer) VerifySig4Vscc(cxt context.Context, env *fpga.VsccEnvelope) (*fpga.VsccResponse, error) {
@@ -240,7 +289,7 @@ func start() {
 	grpcServer := grpc.NewServer(opts...)
 	//fpga.RegisterFpgaServer(grpcServer, newServer())
 	fpga.RegisterBlockRPCServer(grpcServer, newServer())
-	logger.Debugf("start a fpga mock server.")
+	logger.Infof("start a fpga mock server.")
 	lis, err := net.Listen("tcp", "0.0.0.0:10000")
 	if err != nil {
 		logger.Fatalf("failed to listen: %v", err)

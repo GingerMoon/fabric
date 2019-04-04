@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/validator/internal"
 	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version"
 	"github.com/hyperledger/fabric/fpga"
+	fpgautils "github.com/hyperledger/fabric/fpga/utils"
 	fpgapb "github.com/hyperledger/fabric/protos/fpga"
 	"github.com/hyperledger/fabric/protos/ledger/rwset/kvrwset"
 	"github.com/hyperledger/fabric/protos/peer"
@@ -178,7 +179,8 @@ func (v *Validator) ValidateAndPrepareBatch(block *internal.Block, doMVCCValidat
 			// func (v *Validator) validateKVRead(ns string, kvRead *kvrwset.KVRead, updates *privacyenabledstate.PubUpdateBatch) (bool, error) {
 			//	if updates.Exists(ns, kvRead.Key) {
 			//		return false, nil
-			reply := fpga.SendBlock4MvccBlockRpc(block.CommonBlock)
+			fpgaBlockRequest := fpgautils.GenerateBlock(block.CommonBlock)
+			reply := fpga.SendBlock4MvccBlockRpc(fpgaBlockRequest)
 
 			for i, tx := range block.Txs {
 				txReply := reply.TxReplies[tx.IndexInBlock] // !!! TXReply need to be put in the indexInBlock position. Else Fabric will need to interate through the BlockReply.

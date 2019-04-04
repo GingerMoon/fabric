@@ -10,14 +10,13 @@ import (
 var (
 	logger = flogging.MustGetLogger("fpga")
 	serverAddr = os.Getenv("FPGA_SERVER_ADDR")
+	conn *grpc.ClientConn
 )
 
 func init() {
-	//initVerifySigWorkers()
-	//startVerifySigTaskPool()
-	//
-	//initSendBlock4MvccWorkerWorker()
-	//startSendBlock4MvccTaskPool()
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithInsecure())
+	conn, _ = grpc.Dial(serverAddr, opts...)
 
 	initSendBlock4MvccBlockRpcWorkerWorker()
 	startSendBlock4MvccBlockRpcTaskPool()
@@ -32,15 +31,4 @@ func createFpgaClient() pb.FpgaClient {
 	}
 	//defer conn.Close()
 	return pb.NewFpgaClient(conn)
-}
-
-func createBlockRpcClient() pb.BlockRPCClient {
-	var opts []grpc.DialOption
-	opts = append(opts, grpc.WithInsecure())
-	conn, err := grpc.Dial(serverAddr, opts...)
-	if err != nil {
-		logger.Fatalf("fail to dial: %v", err)
-	}
-	//defer conn.Close()
-	return pb.NewBlockRPCClient(conn)
 }

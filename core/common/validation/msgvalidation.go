@@ -21,7 +21,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
-	"github.com/hyperledger/fabric/fpga"
+	fpgaId "github.com/hyperledger/fabric/fpga/identities"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protos/common"
 	pbmsp "github.com/hyperledger/fabric/protos/msp"
@@ -179,10 +179,7 @@ func checkSignatureFromCreator(creatorBytes []byte, sig []byte, msg []byte, Chai
 
 	putilsLogger.Debugf("creator is valid")
 
-	// validate the signature
-	//fpgaId := (*msp.FpgaIdentity)(unsafe.Pointer(reflect.ValueOf(creator).Pointer()))
-	//fpgaId.Verify(msg, sig)
-	err = fpga.FpgaEndorserVerify(creator, msg, sig)
+	err = fpgaId.FpgaEndorserVerify(creator, msg, sig)
 	//err = creator.Verify(msg, sig)
 	if err != nil {
 		return errors.WithMessage(err, "creator's signature over the proposal is not valid")

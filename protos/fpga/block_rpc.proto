@@ -1,11 +1,17 @@
 syntax = "proto3";
 
+// protoc -I ./ fpga/block_rpc.proto --go_out=plugins=grpc:./
+
 package fpga;
 
 // The gPRC service definition.
 service BlockRPC {
-  // Sends a block
+  // Sends a block (vscc in block commitment vscc
   rpc SendBlockData (BlockRequest) returns (BlockReply) {}
+
+  // endorse sign & verify
+  rpc EndorserSign (EndorserSignRequest) returns (EndorserSignReply) {}
+  rpc EndorserVerify (EndorserVerifyRequest) returns (EndorserVerifyReply) {}
 }
 
 // The request containing the block struct.
@@ -80,4 +86,51 @@ message BlockReply {
     repeated TXReply tx_replies = 2;
 }
 
+// *******[BEGIN] endorser sign req and resp *******
+message EndorserSignRequest {
+    repeated SignReq signReqs = 1;
+}
 
+message EndorserSignReply {
+    repeated SignResult signResults = 1;
+}
+
+// sign request
+message SignReq {
+    int32 req_id = 1;
+    bytes  d      = 2;	// big-endian
+    bytes  hash   = 3;
+}
+
+// signature response
+message SignResult {
+    int32 req_id = 1;
+    bytes sign_r  = 2; // big-endian
+    bytes sign_s  = 3; // big-endian
+}
+// *******[END] endorser sign req and resp *******
+
+
+// *******[BEGIN] endorser verify req and resp *******
+message EndorserVerifyRequest {
+    repeated VerifyReq verifyReqs = 1;
+}
+
+message EndorserVerifyReply {
+    repeated VerifyResult verifyResults = 1;
+}
+
+message VerifyReq {
+    int32 req_id = 1;
+    bytes  sign_r = 2; // big-endian
+    bytes  sign_s = 3; // big-endian
+    bytes  hash   = 4;
+    bytes  px     = 5; // big-endian
+    bytes  py     = 6; // big-endian
+}
+
+message VerifyResult {
+    int32 req_id = 1;
+    bool valid = 2;
+}
+// *******[END] endorser verify req and resp *******
