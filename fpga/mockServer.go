@@ -23,7 +23,6 @@ type fpgaServer struct {
 }
 
 func (s *fpgaServer) Sign(ctx context.Context, env *fpga.BatchRequest) (*fpga.BatchReply, error) {
-	logger.Infof("mock fpga  receive a EndorserSign request")
 	reply := &fpga.BatchReply{}
 
 	for _, request := range env.SgRequests {
@@ -43,7 +42,6 @@ func (s *fpgaServer) Sign(ctx context.Context, env *fpga.BatchRequest) (*fpga.Ba
 }
 
 func (s *fpgaServer) Verify(ctx context.Context, env *fpga.BatchRequest) (*fpga.BatchReply, error) {
-	logger.Infof("mock fpga  receive a EndorserVerify request")
 	reply := &fpga.BatchReply{}
 
 	for _, request := range env.SvRequests {

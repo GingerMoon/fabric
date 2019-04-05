@@ -21,7 +21,7 @@ func FpgaEndorserSign(signer endorsement.SigningIdentity, msg []byte) ([]byte, e
 	return fpgaSigner.Sign(msg)
 }
 
-func FpgaEndorserVerify(id msp.Identity, msg []byte, sig []byte) error {
+func generateFpgaIdentity(id msp.Identity) *msp.FpgaIdentity {
 	if reflect.TypeOf(id).String() != "*cache.cachedIdentity" {
 		logger.Fatalf(reflect.TypeOf(id).String())
 	}
@@ -32,5 +32,15 @@ func FpgaEndorserVerify(id msp.Identity, msg []byte, sig []byte) error {
 	}
 
 	fpgaIdentity := (*msp.FpgaIdentity)(unsafe.Pointer(reflect.ValueOf(fpgaCachedIdentity.Identity).Pointer()))
-	return fpgaIdentity.Verify(msg, sig)
+	return fpgaIdentity
+}
+
+func FpgaVerify4Endorser(id msp.Identity, msg []byte, sig []byte) error {
+	fpgaIdentity := generateFpgaIdentity(id)
+	return fpgaIdentity.EndorserVerify(msg, sig)
+}
+
+func FpgaVerify4Committer(id msp.Identity, msg []byte, sig []byte) error {
+	fpgaIdentity := generateFpgaIdentity(id)
+	return fpgaIdentity.CommitterVerify(msg, sig)
 }

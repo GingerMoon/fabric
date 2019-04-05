@@ -18,10 +18,10 @@ package validation
 
 import (
 	"bytes"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/channelconfig"
 	"github.com/hyperledger/fabric/common/flogging"
+	fpgaId "github.com/hyperledger/fabric/fpga/identities"
 	mspmgmt "github.com/hyperledger/fabric/msp/mgmt"
 	"github.com/hyperledger/fabric/protos/common"
 	"github.com/hyperledger/fabric/protos/msp"
@@ -179,14 +179,56 @@ func checkSignatureFromCreator(creatorBytes []byte, sig []byte, msg []byte, Chai
 
 	putilsLogger.Debugf("creator is valid")
 
-	// validate the signature
-	err = creator.Verify(msg, sig)
+	err = fpgaId.FpgaVerify4Endorser(creator, msg, sig)
 	if err != nil {
 		return errors.WithMessage(err, "creator's signature over the proposal is not valid")
 	}
 
 	putilsLogger.Debugf("exits successfully")
 
+	return nil
+}
+
+// given a creator, a message and a signature,
+// this function returns nil if the creator
+// is a valid cert and the signature is valid
+func checkSignatureFromCreator4Committer(creatorBytes []byte, sig []byte, msg []byte, ChainID string) error {
+	putilsLogger.Debugf("begin")
+
+	// check for nil argument
+	if creatorBytes == nil || sig == nil || msg == nil {
+		return errors.New("nil arguments")
+	}
+
+	mspObj := mspmgmt.GetIdentityDeserializer(ChainID)
+	if mspObj == nil {
+		return errors.Errorf("could not get msp for channel [%s]", ChainID)
+	}
+
+	// get the identity of the creator
+	creator, err := mspObj.DeserializeIdentity(creatorBytes)
+	if err != nil {
+		return errors.WithMessage(err, "MSP error")
+	}
+
+	putilsLogger.Debugf("creator is %s", creator.GetIdentifier())
+
+	// ensure that creator is a valid certificate
+	err = creator.Validate()
+	if err != nil {
+		return errors.WithMessage(err, "creator certificate is not valid")
+	}
+
+	putilsLogger.Debugf("creator is valid")
+
+	//validate the signature
+	err = fpgaId.FpgaVerify4Committer(creator, msg, sig)
+	if err != nil {
+		return errors.WithMessage(err, "creator's signature over the proposal is not valid")
+	}
+
+	//putilsLogger.Debugf("exits successfully")
+	putilsLogger.Debugf("Creator's signature will be checked later via FPGA. ")
 	return nil
 }
 
@@ -397,7 +439,7 @@ func ValidateTransaction(e *common.Envelope, c channelconfig.ApplicationCapabili
 	}
 
 	// validate the signature in the envelope
-	err = checkSignatureFromCreator(shdr.Creator, e.Signature, e.Payload, chdr.ChannelId)
+	err = checkSignatureFromCreator4Committer(shdr.Creator, e.Signature, e.Payload, chdr.ChannelId)
 	if err != nil {
 		putilsLogger.Errorf("checkSignatureFromCreator returns err %s", err)
 		return nil, pb.TxValidationCode_BAD_CREATOR_SIGNATURE
