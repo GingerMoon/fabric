@@ -8,6 +8,7 @@ package msp
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -96,6 +97,15 @@ func (id *FpgaIdentity) Verify(msg []byte, sig []byte) error {
 	panic("this function should not be invoked!")
 }
 
+func (id *FpgaIdentity) GetPublicKey() (*ecdsa.PublicKey, error) {
+	if reflect.TypeOf(id.pk).String() != "*sw.ecdsaPublicKey" {
+		return nil, errors.Errorf("expected identity's publilc key type: *sw.ecdsaPublicKey, but got %s", reflect.TypeOf(id.pk).String())
+	}
+	pk := (*ecdsaPublicKey)(unsafe.Pointer(reflect.ValueOf(id.pk).Pointer()))
+	pubkey := pk.pubKey
+	return pubkey, nil
+}
+
 // Verify checks against a signature and a message
 // to determine whether this identity produced the
 // signature; it returns nil if so or an error otherwise
@@ -149,15 +159,15 @@ func (id *FpgaIdentity) EndorserVerify(msg []byte, sig []byte) error {
 }
 
 func (id *FpgaIdentity) CommitterVerify(msg []byte, sig []byte) error {
-	in, err := id.prepare4Verify(msg, sig)
-	if err != nil {
-		return err
-	}
-
-	valid := fpga.CommitterVerify(in)
-	if !valid {
-		return errors.New("The signature is invalid")
-	}
+	//in, err := id.prepare4Verify(msg, sig)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//valid := fpga.CommitterVerify(in)
+	//if !valid {
+	//	return errors.New("The signature is invalid")
+	//}
 	return nil
 }
 

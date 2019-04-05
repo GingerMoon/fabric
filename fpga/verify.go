@@ -12,12 +12,10 @@ import (
 var (
 	verifyLogger = flogging.MustGetLogger("fpga.endorserVerify")
 	endorserVerifyWorker = verifyWorker{}
-	committerVerifyWorker = verifyWorker{}
 )
 
 func init() {
 	endorserVerifyWorker.start()
-	committerVerifyWorker.start()
 }
 
 
@@ -109,9 +107,10 @@ func EndorserVerify(in *pb.BatchRequest_SignVerRequest) bool {
 	return r.Verified
 }
 
-func CommitterVerify(in *pb.BatchRequest_SignVerRequest) bool {
-	ch := make(chan *pb.BatchReply_SignVerReply)
-	committerVerifyWorker.addToTaskPool(&verifyRpcTask{in, ch})
-	r := <-ch
-	return r.Verified
-}
+//func CommitterVerify(in *pb.BatchRequest_SignVerRequest) bool {
+//	logger.Fatalf("CommitterVerify should not be used because the verification in commit block should be handled in the same batch.")
+//	ch := make(chan *pb.BatchReply_SignVerReply)
+//	committerVerifyWorker.addToTaskPool(&verifyRpcTask{in, ch})
+//	r := <-ch
+//	return r.Verified
+//}

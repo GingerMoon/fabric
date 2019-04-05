@@ -9,6 +9,7 @@ package txvalidator
 import (
 	"context"
 	"fmt"
+	"github.com/hyperledger/fabric/fpga"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -206,6 +207,9 @@ func (v *TxValidator) Validate(block *common.Block) error {
 		return err
 	}
 
+	if err = fpga.CommitBlockVerify(block); err != nil {
+		return err
+	}
 	// if we operate with this capability, we mark invalid any transaction that has a txid
 	// which is equal to that of a previous tx in this block
 	if v.Support.Capabilities().ForbidDuplicateTXIdInBlock() {

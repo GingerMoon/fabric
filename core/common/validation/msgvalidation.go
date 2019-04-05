@@ -227,8 +227,7 @@ func checkSignatureFromCreator4Committer(creatorBytes []byte, sig []byte, msg []
 		return errors.WithMessage(err, "creator's signature over the proposal is not valid")
 	}
 
-	//putilsLogger.Debugf("exits successfully")
-	putilsLogger.Debugf("Creator's signature will be checked later via FPGA. ")
+	putilsLogger.Debugf("exits successfully")
 	return nil
 }
 
