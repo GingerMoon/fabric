@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+// golang:
+// protoc -I ./ fpga/sm2_batch_rpc.proto --go_out=plugins=grpc:./
+// cpp:
+// /usr/local/bin/protoc -I=. --grpc_out=. --plugin=protoc-gen-grpc=/usr/local/bin/grpc_cpp_plugin sm2_batch_rpc.proto
+// /usr/local/bin/protoc -I=. --cpp_out=. sm2_batch_rpc.proto
+
+package fpga;
+
+// The gPRC service definition.
+service BatchRPC {
+  // Sends a Batch
+  rpc Sign (BatchRequest) returns (BatchReply) {}
+  rpc Verify (BatchRequest) returns (BatchReply) {}
+}
+
+// 批申请数据结构
+message BatchRequest {
+    uint64 batch_id   = 1;  // 批ID
+	uint32 batch_type = 2;  // 0: 签名生成；1：验签验证
+    uint32 req_count  = 3;  // 本批里签名或者验签个数
+
+	// 签名生成请求数据结构
+	message SignGenRequest {
+	    string req_id = 1;	// 256-bit 请求ID
+        bytes  d      = 2;	// 256-bit 私钥
+        bytes  hash   = 3;  // 256-bit 信息杂凑值
+    }
+
+	// 签名验证请求数据结构
+    message SignVerRequest {
+	    string req_id = 1;	// 256-bit 请求ID
+        bytes  sign_r = 2;	// 256-bit 签名R部分
+        bytes  sign_s = 3;  // 256-bit 签名S部分
+        bytes  hash   = 4;  // 256-bit 信息杂凑值
+        bytes  px     = 5;  // 256-bit 公钥第一部分  
+        bytes  py     = 6;  // 256-bit 公钥第二部分
+    }
+    
+    repeated SignGenRequest sg_requests = 4;  // 签名生成请求数据
+    repeated SignVerRequest sv_requests = 5;  // 签名验证请求数据
+}
+
+// 批回复数据结构
+message BatchReply {
+
+    uint64 batch_id   = 1;  // 批ID
+	uint32 batch_type = 2;  // 0: 签名生成；1：验签验证
+	uint32 rep_count  = 3;  // 本批里签名或者验签个数
+
+    // 签名生成回复数据结构
+    message SignGenReply {
+	    string req_id = 1;	// 256-bit 请求ID
+        bytes sign_r  = 2;	// 256-bit 签名R部分
+        bytes sign_s  = 3;	// 256-bit 签名S部分
+    }
+
+    // 签名验证回复数据结构
+    message SignVerReply {
+	    string req_id = 1;	// 256-bit 请求ID
+        bool verified = 2;	// bool 验签结果
+    }
+	
+    repeated SignGenReply sg_replies = 4;  // 签名生成回复数据
+    repeated SignVerReply sv_replies = 5;  // 签名验证回复数据
+}
