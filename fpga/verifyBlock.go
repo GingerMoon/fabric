@@ -8,7 +8,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/fpga/utils"
-	"github.com/hyperledger/fabric/protos/common"
 	pb "github.com/hyperledger/fabric/protos/fpga"
 	"time"
 )
@@ -26,7 +25,7 @@ type verifyBlockWorker struct {
 	client      pb.BatchRPCClient
 }
 
-func CommitBlockVerify(block *common.Block) error {
+func CommitBlockVerify(svRequests []*pb.BatchRequest_SignVerRequest) error {
 	svRequests, err := utils.GenerateBlockVerifyRequests(block)
 	if err != nil {
 		return err

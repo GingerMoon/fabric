@@ -28,6 +28,7 @@ import (
 	mspprotos "github.com/hyperledger/fabric/protos/msp"
 	"github.com/hyperledger/fabric/protos/peer"
 	"github.com/hyperledger/fabric/protos/utils"
+	fpgautils "github.com/hyperledger/fabric/fpga/utils"
 	"github.com/pkg/errors"
 )
 
@@ -207,7 +208,8 @@ func (v *TxValidator) Validate(block *common.Block) error {
 		return err
 	}
 
-	if err = fpga.CommitBlockVerify(block); err != nil {
+	svRequests, err := fpgautils.GenerateBlockVerifyRequests(block)
+	if err = fpga.CommitBlockVerify(svRequests); err != nil {
 		return err
 	}
 	// if we operate with this capability, we mark invalid any transaction that has a txid
