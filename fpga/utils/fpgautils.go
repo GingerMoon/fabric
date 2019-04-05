@@ -67,15 +67,21 @@ func GenerateBlockVerifyRequests(block *common.Block) (requests []*pb.BatchReque
 			return nil, err
 		}
 
-		err = populateReq4creatorCheck(requests, shdr.Creator, env.Signature, env.Payload, chdr.ChannelId)
+		request, err := populateReq4creatorCheck(shdr.Creator, env.Signature, env.Payload, chdr.ChannelId)
+		requests = append(requests, request)
 		if err != nil {
 			err = errors.Errorf("populateTx4creatorCheck err: %+v", err)
 			return nil, err
 		}
-
 		// HeaderType_CONFIG has only mvcc, doesn't have vscc
 		if common.HeaderType(chdr.Type) == common.HeaderType_ENDORSER_TRANSACTION {
-			populateReq4vscc(requests, payload.Data)
+			endorse_requests, err := populateReq4vscc(payload.Data)
+			if err != nil {
+				return nil, err
+			}
+			for _, e := range endorse_requests {
+				requests = append(requests, e)
+			}
 		} else if common.HeaderType(chdr.Type) == common.HeaderType_CONFIG {
 			// [validator.go:432] if err := v.Support.Apply(configEnvelope); err != nil {
 			// configuration tx doesn't do vscc.
@@ -89,19 +95,19 @@ func GenerateBlockVerifyRequests(block *common.Block) (requests []*pb.BatchReque
 }
 
 //for now fpga only supports bccsp.SHA256. bccsp.SHA3_256 is not supported.
-func populateReq4creatorCheck(requests []*pb.BatchRequest_SignVerRequest, creatorBytes []byte, sigBytes []byte, msg []byte, ChainID string) error {
+func populateReq4creatorCheck(creatorBytes []byte, sigBytes []byte, msg []byte, ChainID string) (*pb.BatchRequest_SignVerRequest, error) {
 	// check for nil argument
 	if creatorBytes == nil || sigBytes == nil || msg == nil {
-		return errors.New("populateTx4creatorCheck nil arguments")
+		return nil, errors.New("populateTx4creatorCheck nil arguments")
 	}
 	request := &pb.BatchRequest_SignVerRequest{}
-	request.ReqId = strconv.Itoa(len(requests))
+	request.ReqId = "0"
 
 	request.Hash = util.ComputeSHA256(msg)
 
 	r, s, err := bccsputils .UnmarshalECDSASignature(sigBytes)
 	if err != nil {
-		return errors.Errorf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(sigBytes), err.Error())
+		return nil, errors.Errorf("utils.UnmarshalECDSASignature failed. signature is: %v, error message: %v.", base64.StdEncoding.EncodeToString(sigBytes), err.Error())
 	}
 	request.SignR = r.Bytes()
 	request.SignS = s.Bytes()
@@ -109,13 +115,13 @@ func populateReq4creatorCheck(requests []*pb.BatchRequest_SignVerRequest, creato
 
 	mspObj := mspmgmt.GetIdentityDeserializer(ChainID)
 	if mspObj == nil {
-		return errors.Errorf("could not get msp for channel [%s]", ChainID)
+		return nil, errors.Errorf("could not get msp for channel [%s]", ChainID)
 	}
 
 	// get the identity of the creator
 	creator, err := mspObj.DeserializeIdentity(creatorBytes)
 	if err != nil {
-		return errors.WithMessage(err, "MSP error")
+		return nil, errors.WithMessage(err, "MSP error")
 	}
 
 	// the check has already been done in checkSignatureFromCreatorFpga
@@ -128,16 +134,15 @@ func populateReq4creatorCheck(requests []*pb.BatchRequest_SignVerRequest, creato
 	id := fpgaident.GenerateFpgaIdentity(creator)
 	pubkey, err := id.GetPublicKey()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	request.Px = pubkey.X.Bytes()
 	request.Py = pubkey.Y.Bytes()
 
-	requests = append(requests, request)
-	return nil
+	return request, nil
 }
 
-func populateReq4vscc(requests []*pb.BatchRequest_SignVerRequest, txBytes []byte) error {
+func populateReq4vscc(txBytes []byte) (requests []*pb.BatchRequest_SignVerRequest, err error) {
 	//var wrNamespace []string
 	//// !!! for now we don't consider this scenario.
 	//// alwaysEnforceOriginalNamespace := v.support.Capabilities().V1_2Validation()
@@ -166,16 +171,16 @@ func populateReq4vscc(requests []*pb.BatchRequest_SignVerRequest, txBytes []byte
 
 	transaction, err := utils.GetTransaction(txBytes)
 	if err != nil {
-		return errors.Errorf("GetTransaction failed, err %s", err)
+		return nil, errors.Errorf("GetTransaction failed, err %s", err)
 	}
 
 	if len(transaction.Actions) != 1 {
-		return errors.Errorf("only one action per transaction is supported, tx contains %d", len(transaction.Actions))
+		return nil,  errors.Errorf("only one action per transaction is supported, tx contains %d", len(transaction.Actions))
 	}
 
 	cap, err := utils.GetChaincodeActionPayload(transaction.Actions[0].Payload)
 	if err != nil {
-		return errors.Errorf("GetChaincodeActionPayload failed, err %s", err)
+		return nil,  errors.Errorf("GetChaincodeActionPayload failed, err %s", err)
 	}
 
 	endorsements := cap.Action.Endorsements
@@ -184,9 +189,9 @@ func populateReq4vscc(requests []*pb.BatchRequest_SignVerRequest, txBytes []byte
 	//respPayload, err := utils.GetChaincodeAction(pRespPayload.Extension)
 	//rwset := respPayload.Results
 
-	for _, endorsement := range endorsements {
+	for i, endorsement := range endorsements {
 		request := &pb.BatchRequest_SignVerRequest{}
-		request.ReqId = strconv.Itoa(len(requests))
+		request.ReqId = strconv.Itoa(i)
 
 		data := make([]byte, len(prp)+len(endorsement.Endorser))
 		copy(data, prp)
@@ -196,7 +201,7 @@ func populateReq4vscc(requests []*pb.BatchRequest_SignVerRequest, txBytes []byte
 		sId := &msp.SerializedIdentity{}
 		err := proto.Unmarshal(endorsement.Endorser, sId) // func (msp *bccspmsp) DeserializeIdentity
 		if err != nil {
-			return errors.Errorf("could not deserialize a SerializedIdentity")
+			return nil, errors.Errorf("could not deserialize a SerializedIdentity")
 		}
 		bl, _ := pem.Decode(sId.IdBytes)
 		if bl == nil {
@@ -221,5 +226,5 @@ func populateReq4vscc(requests []*pb.BatchRequest_SignVerRequest, txBytes []byte
 		request.SignS = s.Bytes()
 		requests = append(requests, request)
 	}
-	return nil
+	return requests, nil
 }

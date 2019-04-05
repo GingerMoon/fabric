@@ -2,9 +2,9 @@ package fpga
 
 import (
 	"context"
-	"github.com/pkg/errors"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
+	"github.com/pkg/errors"
 	"time"
 )
 
@@ -14,7 +14,7 @@ var (
 )
 
 func init() {
-	endorserVerifyWorker.client = pb.NewBatchRPCClient(conn)
+	blockVerifyWorker.client = pb.NewBatchRPCClient(conn)
 }
 
 type verifyBlockWorker struct {
@@ -22,6 +22,9 @@ type verifyBlockWorker struct {
 }
 
 func CommitBlockVerify(svRequests []*pb.BatchRequest_SignVerRequest) error {
+	if len(svRequests) == 0 {
+		return errors.Errorf("CommitBlockVerify len(svRequests) is 0")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	response, err := blockVerifyWorker.client.Verify(ctx, &pb.BatchRequest{SvRequests:svRequests, BatchType:1, BatchId: 0, ReqCount:uint32(len(svRequests))})
 	if err != nil {
