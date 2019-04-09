@@ -68,6 +68,7 @@ func (e *verifyWorker) work() {
 		}
 	}()
 
+	var batchId uint64 = 0
 	// invoke the rpc every interval milliseconds
 	go func() {
 		for true {
@@ -76,9 +77,9 @@ func (e *verifyWorker) work() {
 
 			e.m.Lock()
 			if len(e.rpcRequests) > 0 {
-				response, err := e.client.Verify(ctx, &pb.BatchRequest{SvRequests:e.rpcRequests, BatchType:1, BatchId: 0, ReqCount:uint32(len(e.rpcRequests))})
+				response, err := e.client.Verify(ctx, &pb.BatchRequest{SvRequests:e.rpcRequests, BatchType:1, BatchId: batchId, ReqCount:uint32(len(e.rpcRequests))})
 				if err != nil {
-					verifyLogger.Errorf("rpc call EndorserVerify failed. Will try again later. err: %v: ", e.client, err)
+					verifyLogger.Fatalf("rpc call EndorserVerify failed. Will try again later. batchId: %d. err: %v: ", batchId, err)
 				} else {
 					e.parseResponse(response)
 					e.rpcRequests = nil
@@ -87,6 +88,7 @@ func (e *verifyWorker) work() {
 			e.m.Unlock()
 
 			cancel()
+			batchId++
 		}
 	}()
 }

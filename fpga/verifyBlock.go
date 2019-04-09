@@ -28,7 +28,7 @@ func CommitBlockVerify(svRequests []*pb.BatchRequest_SignVerRequest) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	response, err := blockVerifyWorker.client.Verify(ctx, &pb.BatchRequest{SvRequests:svRequests, BatchType:1, BatchId: 0, ReqCount:uint32(len(svRequests))})
 	if err != nil {
-		verifyLogger.Errorf("rpc call CommitBlockVerify failed. err: %v: ", err)
+		verifyLogger.Fatalf("rpc call CommitBlockVerify failed. err: %v: ", err)
 		return err
 	}
 

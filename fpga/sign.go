@@ -69,15 +69,16 @@ func (e *endorserSignWorker) work() {
 
 	// invoke the rpc every interval milliseconds
 	go func() {
+		var batchId uint64 = 0
 		for true {
 			time.Sleep( e.interval * time.Millisecond)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
 			e.m.Lock()
 			if len(e.rpcRequests) > 0 {
-				response, err := e.client.Sign(ctx, &pb.BatchRequest{SgRequests:e.rpcRequests, BatchType:0, BatchId: 0, ReqCount:uint32(len(e.rpcRequests))})
+				response, err := e.client.Sign(ctx, &pb.BatchRequest{SgRequests:e.rpcRequests, BatchType:0, BatchId: batchId, ReqCount:uint32(len(e.rpcRequests))})
 				if err != nil {
-					signLogger.Errorf("rpc call EndorserSign failed. Will try again later. err: %v: ", e.client, err)
+					signLogger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %v: ", batchId, err)
 				} else {
 					e.parseResponse(response)
 					e.rpcRequests = nil
@@ -86,6 +87,7 @@ func (e *endorserSignWorker) work() {
 			e.m.Unlock()
 
 			cancel()
+			batchId++
 		}
 	}()
 }
