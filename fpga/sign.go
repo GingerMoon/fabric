@@ -61,7 +61,7 @@ func (e *endorserSignWorker) work() {
 			e.m.Lock()
 			e.rpcRequests = append(e.rpcRequests, task.in)
 			reqId := len(e.rpcRequests) - 1
-			task.in.ReqId = fmt.Sprintf("%032x", reqId)
+			task.in.ReqId = fmt.Sprintf("%064x", reqId)
 			e.m.Unlock()
 			e.rpcResultMap[reqId] = task.out
 		}
@@ -78,7 +78,7 @@ func (e *endorserSignWorker) work() {
 			if len(e.rpcRequests) > 0 {
 				response, err := e.client.Sign(ctx, &pb.BatchRequest{SgRequests:e.rpcRequests, BatchType:0, BatchId: batchId, ReqCount:uint32(len(e.rpcRequests))})
 				if err != nil {
-					signLogger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %v: ", batchId, err)
+					signLogger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
 				} else {
 					e.parseResponse(response)
 					e.rpcRequests = nil
