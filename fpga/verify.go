@@ -62,7 +62,7 @@ func (e *verifyWorker) work() {
 			e.m.Lock()
 			e.rpcRequests = append(e.rpcRequests, task.in)
 			reqId := len(e.rpcRequests) - 1
-			task.in.ReqId = fmt.Sprintf("%32s", reqId)
+			task.in.ReqId = fmt.Sprintf("%032x", reqId)
 			e.m.Unlock()
 			e.rpcResultMap[reqId] = task.out
 		}
