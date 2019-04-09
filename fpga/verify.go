@@ -29,7 +29,7 @@ type verifyWorker struct {
 	client      pb.BatchRPCClient
 	taskPool    chan *verifyRpcTask
 
-	rpcResultMap map[string] chan<-*pb.BatchReply_SignVerReply
+	rpcResultMap map[int] chan<-*pb.BatchReply_SignVerReply
 
 	m sync.Mutex
 	rpcRequests  []*pb.BatchRequest_SignVerRequest
@@ -47,7 +47,7 @@ func (e *verifyWorker) init() {
 	e.m = sync.Mutex{}
 	e.batchSize = 5000
 	e.interval = 100
-	e.rpcResultMap = make(map[string] chan<-*pb.BatchReply_SignVerReply)
+	e.rpcResultMap = make(map[int] chan<-*pb.BatchReply_SignVerReply)
 
 	e.client = pb.NewBatchRPCClient(conn)
 	e.taskPool = make(chan *verifyRpcTask, e.batchSize)
@@ -61,10 +61,10 @@ func (e *verifyWorker) work() {
 		for task := range e.taskPool {
 			e.m.Lock()
 			e.rpcRequests = append(e.rpcRequests, task.in)
-			reqIdTmp := strconv.Itoa(len(e.rpcRequests) - 1)
-			task.in.ReqId = fmt.Sprintf("%32s", reqIdTmp)
+			reqId := len(e.rpcRequests) - 1
+			task.in.ReqId = fmt.Sprintf("%32s", reqId)
 			e.m.Unlock()
-			e.rpcResultMap[task.in.ReqId] = task.out
+			e.rpcResultMap[reqId] = task.out
 		}
 	}()
 
@@ -94,7 +94,12 @@ func (e *verifyWorker) work() {
 func (e *verifyWorker) parseResponse(response *pb.BatchReply) {
 	verifyResults := response.SvReplies
 	for _, result := range verifyResults {
-		e.rpcResultMap[result.ReqId] <- result
+		reqId, err := strconv.Atoi(result.ReqId)
+		if err != nil || e.rpcResultMap[reqId] == nil {
+			logger.Fatalf("[verifyWorker] the request id(%s) in the rpc reply is not stored before.", result)
+		}
+
+		e.rpcResultMap[reqId] <- result
 	}
 }
 

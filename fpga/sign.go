@@ -28,7 +28,7 @@ type endorserSignWorker struct {
 	client      pb.BatchRPCClient
 	taskPool    chan *endorserSignRpcTask
 
-	rpcResultMap map[string] chan<-*pb.BatchReply_SignGenReply
+	rpcResultMap map[int] chan<-*pb.BatchReply_SignGenReply
 
 	m *sync.Mutex
 	rpcRequests  []*pb.BatchRequest_SignGenRequest
@@ -46,7 +46,7 @@ func (e *endorserSignWorker) init() {
 	e.m = &sync.Mutex{}
 	e.batchSize = 5000
 	e.interval = 100
-	e.rpcResultMap = make(map[string] chan<-*pb.BatchReply_SignGenReply)
+	e.rpcResultMap = make(map[int] chan<-*pb.BatchReply_SignGenReply)
 
 	e.client = pb.NewBatchRPCClient(conn)
 	e.taskPool = make(chan *endorserSignRpcTask, e.batchSize)
@@ -60,10 +60,10 @@ func (e *endorserSignWorker) work() {
 		for task := range e.taskPool {
 			e.m.Lock()
 			e.rpcRequests = append(e.rpcRequests, task.in)
-			reqIdTmp := strconv.Itoa(len(e.rpcRequests) - 1)
-			task.in.ReqId = fmt.Sprintf("%32s", reqIdTmp)
+			reqId := len(e.rpcRequests) - 1
+			task.in.ReqId = fmt.Sprintf("%32s", reqId)
 			e.m.Unlock()
-			e.rpcResultMap[task.in.ReqId] = task.out
+			e.rpcResultMap[reqId] = task.out
 		}
 	}()
 
@@ -93,7 +93,12 @@ func (e *endorserSignWorker) work() {
 func (e *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 	signatures := response.SgReplies
 	for _, sig := range signatures {
-		e.rpcResultMap[sig.ReqId] <- sig
+		reqId, err := strconv.Atoi(sig.ReqId)
+		if err != nil || e.rpcResultMap[reqId] == nil {
+			logger.Fatalf("[endorserSignWorker] the request id(%s) in the rpc reply is not stored before.", sig.ReqId)
+		}
+
+		e.rpcResultMap[reqId] <- sig
 	}
 }
 
