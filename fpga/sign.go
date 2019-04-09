@@ -2,6 +2,7 @@ package fpga
 
 import (
 	"context"
+	"fmt"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
 	"strconv"
@@ -59,7 +60,8 @@ func (e *endorserSignWorker) work() {
 		for task := range e.taskPool {
 			e.m.Lock()
 			e.rpcRequests = append(e.rpcRequests, task.in)
-			task.in.ReqId = strconv.Itoa(len(e.rpcRequests) - 1)
+			reqIdTmp := strconv.Itoa(len(e.rpcRequests) - 1)
+			task.in.ReqId = fmt.Sprintf("%32s", reqIdTmp)
 			e.m.Unlock()
 			e.rpcResultMap[task.in.ReqId] = task.out
 		}
