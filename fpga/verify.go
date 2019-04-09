@@ -49,7 +49,7 @@ func (e *verifyWorker) init() {
 	e.interval = 100
 	e.rpcResultMap = make(map[int] chan<-*pb.BatchReply_SignVerReply)
 
-	e.client = pb.NewBatchRPCClient(conn)
+	e.client = pb.NewBatchRPCClient(connEndorserVerify)
 	e.taskPool = make(chan *verifyRpcTask, e.batchSize)
 }
 
