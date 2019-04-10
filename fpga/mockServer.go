@@ -23,6 +23,7 @@ type fpgaServer struct {
 }
 
 func (s *fpgaServer) Sign(ctx context.Context, env *fpga.BatchRequest) (*fpga.BatchReply, error) {
+	logger.Infof("mock server received sign rpc invoke. batch_id: %d, ReqCount: %d", env.BatchId, env.ReqCount)
 	reply := &fpga.BatchReply{}
 
 	for _, request := range env.SgRequests {
@@ -38,10 +39,13 @@ func (s *fpgaServer) Sign(ctx context.Context, env *fpga.BatchRequest) (*fpga.Ba
 		signature := &fpga.BatchReply_SignGenReply{ReqId: request.ReqId, SignR:r.Bytes(), SignS:s.Bytes()}
 		reply.SgReplies = append(reply.SgReplies, signature)
 	}
+	logger.Infof("mock server returned sign rpc. batch_id: %d, ReqCount: %d", reply.BatchId, reply.RepCount)
 	return reply, nil
 }
 
 func (s *fpgaServer) Verify(ctx context.Context, env *fpga.BatchRequest) (*fpga.BatchReply, error) {
+	logger.Infof("mock server received verify rpc invoke. batch_id: %d, ReqCount: %d", env.BatchId, env.ReqCount)
+
 	reply := &fpga.BatchReply{}
 
 	for _, request := range env.SvRequests {
@@ -63,6 +67,7 @@ func (s *fpgaServer) Verify(ctx context.Context, env *fpga.BatchRequest) (*fpga.
 		result := &fpga.BatchReply_SignVerReply{ReqId:request.ReqId, Verified:valid}
 		reply.SvReplies = append(reply.SvReplies, result)
 	}
+	logger.Infof("mock server returned verify rpc. batch_id: %d, ReqCount: %d", reply.BatchId, reply.RepCount)
 	return reply, nil
 }
 

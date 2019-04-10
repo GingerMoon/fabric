@@ -1,125 +1,114 @@
 package fpga
 
 import (
+	"container/list"
 	"context"
-	"fmt"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
-	"strconv"
 	"sync"
 	"time"
 )
 
 var (
-	verifyLogger = flogging.MustGetLogger("fpga.endorserVerify")
-	endorserVerifyWorker = verifyWorker{}
+	vk = verifyWorker{}
 )
 
 func init() {
-	endorserVerifyWorker.start()
+	vk.start()
 }
 
-
 type verifyRpcTask struct {
-	in  *pb.BatchRequest_SignVerRequest
-	out chan<- *pb.BatchReply_SignVerReply
+	in  *pb.BatchRequest
+	out chan<- *pb.BatchReply
 }
 
 type verifyWorker struct {
-	client      pb.BatchRPCClient
-	taskPool    chan *verifyRpcTask
+	logger			*flogging.FabricLogger
+	client      	pb.BatchRPCClient
 
-	rpcResultMap map[int] chan<-*pb.BatchReply_SignVerReply
-
-	m sync.Mutex
-	rpcRequests  []*pb.BatchRequest_SignVerRequest
-
-	batchSize int
-	interval time.Duration // milliseconds
+	m               *sync.Mutex
+	c               *sync.Cond
+	syncTaskPool    *list.List
+	syncBatchIdResp map[uint64] chan<-*pb.BatchReply
 }
 
-func (e *verifyWorker) start() {
-	e.init()
-	e.work()
+func (w *verifyWorker) start() {
+	w.init()
+	w.work()
 }
 
-func (e *verifyWorker) init() {
-	e.m = sync.Mutex{}
-	e.batchSize = 5000
-	e.interval = 100
-	e.rpcResultMap = make(map[int] chan<-*pb.BatchReply_SignVerReply)
+func (w *verifyWorker) init() {
+	w.logger = flogging.MustGetLogger("fpga.verify")
 
-	e.client = pb.NewBatchRPCClient(conn)
-	e.taskPool = make(chan *verifyRpcTask, e.batchSize)
+	w.client = pb.NewBatchRPCClient(conn)
+	w.m = &sync.Mutex{} // need to be deleted
+	w.c = sync.NewCond(w.m)
+	w.syncTaskPool = list.New()
+	w.syncBatchIdResp = make(map[uint64] chan<-*pb.BatchReply)
 }
 
-func (e *verifyWorker) work() {
-	verifyLogger.Infof("startEndorserVerifyRpcTaskPool")
+func (w *verifyWorker) work() {
+	w.logger.Infof("verifyWorker starts to work.")
 
-	// collect tasks
 	go func() {
-		for task := range e.taskPool {
-			e.m.Lock()
-			e.rpcRequests = append(e.rpcRequests, task.in)
-			reqId := len(e.rpcRequests) - 1
-			task.in.ReqId = fmt.Sprintf("%064x", reqId)
-			e.m.Unlock()
-			e.rpcResultMap[reqId] = task.out
-		}
-	}()
-
-	var batchId uint64 = 0
-	// invoke the rpc every interval milliseconds
-	go func() {
+		var batchId uint64 = 0
 		for true {
-			time.Sleep( e.interval * time.Millisecond)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
-			e.m.Lock()
-			if len(e.rpcRequests) > 0 {
-				response, err := e.client.Verify(ctx, &pb.BatchRequest{SvRequests:e.rpcRequests, BatchType:1, BatchId: batchId, ReqCount:uint32(len(e.rpcRequests))})
-				if err != nil {
-					verifyLogger.Fatalf("rpc call EndorserVerify failed. Will try again later. batchId: %d. err: %s", batchId, err)
-				} else {
-					e.parseResponse(response)
-					e.rpcRequests = nil
-				}
+			// get task from pool and store [batchId, channel] in syncBatchIdResp
+			var task *verifyRpcTask
+			w.c.L.Lock()
+			for w.syncTaskPool.Len() == 0 {
+				w.c.Wait()
 			}
-			e.m.Unlock()
+			element := w.syncTaskPool.Front()
+			w.syncTaskPool.Remove(element)
+			task = element.Value.(*verifyRpcTask)
+			if task == nil {
+				w.logger.Fatalf("w.taskCh.Front().Value.(*pb.verifyRpcTask) is expected!")
+			}
+			w.syncBatchIdResp[batchId] = task.out
+			w.c.L.Unlock()
 
+			// prepare rpc parameter
+			task.in.BatchId = batchId
+			task.in.BatchType = 1
+			task.in.ReqCount = uint32(len(task.in.SvRequests))
+			if len(task.in.SvRequests) == 0 {
+				w.logger.Fatalf("why len(task.in.SvRequests) is 0?")
+			}
+
+			// invoke the rpc
+			response, err := w.client.Verify(ctx, task.in)
+			if err != nil {
+				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
+			}
 			cancel()
+			w.parseResponse(response)
 			batchId++
 		}
 	}()
 }
 
-func (e *verifyWorker) parseResponse(response *pb.BatchReply) {
-	verifyResults := response.SvReplies
-	for _, result := range verifyResults {
-		reqId, err := strconv.Atoi(result.ReqId)
-		if err != nil || e.rpcResultMap[reqId] == nil {
-			logger.Fatalf("[verifyWorker] the request id(%s) in the rpc reply is not stored before.", result)
-		}
+func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
+	w.m.Lock()
+	defer w.m.Unlock()
+	w.syncBatchIdResp[response.BatchId] <- response
+	close(w.syncBatchIdResp[response.BatchId])
+	delete(w.syncBatchIdResp, response.BatchId)
 
-		e.rpcResultMap[reqId] <- result
-	}
 }
 
-func (e *verifyWorker) addToTaskPool(task *verifyRpcTask){
-	e.taskPool <- task
+func (w *verifyWorker) pushFront(task *verifyRpcTask) {
+	w.c.L.Lock()
+	defer w.c.L.Unlock()
+	w.syncTaskPool.PushFront(task)
+	w.c.Signal()
 }
 
-func EndorserVerify(in *pb.BatchRequest_SignVerRequest) bool {
-	ch := make(chan *pb.BatchReply_SignVerReply)
-	endorserVerifyWorker.addToTaskPool(&verifyRpcTask{in, ch})
-	r := <-ch
-	return r.Verified
+func (w *verifyWorker) pushBack(task *verifyRpcTask) {
+	w.c.L.Lock()
+	defer w.c.L.Unlock()
+	w.syncTaskPool.PushBack(task)
+	w.c.Signal()
 }
-
-//func CommitterVerify(in *pb.BatchRequest_SignVerRequest) bool {
-//	logger.Fatalf("CommitterVerify should not be used because the verification in commit block should be handled in the same batch.")
-//	ch := make(chan *pb.BatchReply_SignVerReply)
-//	committerVerifyWorker.addToTaskPool(&verifyRpcTask{in, ch})
-//	r := <-ch
-//	return r.Verified
-//}

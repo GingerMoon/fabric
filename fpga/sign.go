@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
+	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 var (
-	signLogger = flogging.MustGetLogger("fpga.endorserSign")
 	signWorker = endorserSignWorker{}
 )
 
@@ -25,6 +26,7 @@ type endorserSignRpcTask struct {
 }
 
 type endorserSignWorker struct {
+	logger			*flogging.FabricLogger
 	client      pb.BatchRPCClient
 	taskPool    chan *endorserSignRpcTask
 
@@ -35,35 +37,44 @@ type endorserSignWorker struct {
 
 	batchSize int
 	interval time.Duration // milliseconds
+
+	gossipCount int // todo to be deleted. it's only for investigation purpose.
 }
 
-func (e *endorserSignWorker) start() {
-	e.init()
-	e.work()
+func (w *endorserSignWorker) start() {
+	w.init()
+	w.work()
 }
 
-func (e *endorserSignWorker) init() {
-	e.m = &sync.Mutex{}
-	e.batchSize = 5000
-	e.interval = 100
-	e.rpcResultMap = make(map[int] chan<-*pb.BatchReply_SignGenReply)
+func (w *endorserSignWorker) init() {
+	w.logger = flogging.MustGetLogger("fpga.sign")
+	w.m = &sync.Mutex{}
+	w.batchSize = 5000
+	w.interval = 100
+	w.rpcResultMap = make(map[int] chan<-*pb.BatchReply_SignGenReply)
 
-	e.client = pb.NewBatchRPCClient(conn)
-	e.taskPool = make(chan *endorserSignRpcTask, e.batchSize)
+	w.client = pb.NewBatchRPCClient(conn)
+	w.taskPool = make(chan *endorserSignRpcTask, w.batchSize)
 }
 
-func (e *endorserSignWorker) work() {
-	signLogger.Infof("startEndorserSignRpcTaskPool")
+func (w *endorserSignWorker) work() {
+	w.logger.Infof("startEndorserSignRpcTaskPool")
 
 	//collect tasks
 	go func() {
-		for task := range e.taskPool {
-			e.m.Lock()
-			e.rpcRequests = append(e.rpcRequests, task.in)
-			reqId := len(e.rpcRequests) - 1
+		for task := range w.taskPool {
+			w.m.Lock()
+
+			if strings.Contains(string(debug.Stack()), "gossip") {
+				w.gossipCount++
+				debug.PrintStack()
+			}
+
+			w.rpcRequests = append(w.rpcRequests, task.in)
+			reqId := len(w.rpcRequests) - 1
 			task.in.ReqId = fmt.Sprintf("%064x", reqId)
-			e.m.Unlock()
-			e.rpcResultMap[reqId] = task.out
+			w.m.Unlock()
+			w.rpcResultMap[reqId] = task.out
 		}
 	}()
 
@@ -71,20 +82,23 @@ func (e *endorserSignWorker) work() {
 	go func() {
 		var batchId uint64 = 0
 		for true {
-			time.Sleep( e.interval * time.Millisecond)
+			time.Sleep( w.interval * time.Millisecond)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
-			e.m.Lock()
-			if len(e.rpcRequests) > 0 {
-				response, err := e.client.Sign(ctx, &pb.BatchRequest{SgRequests:e.rpcRequests, BatchType:0, BatchId: batchId, ReqCount:uint32(len(e.rpcRequests))})
+			w.m.Lock()
+			if len(w.rpcRequests) > 0 {
+				response, err := w.client.Sign(ctx, &pb.BatchRequest{SgRequests:w.rpcRequests, BatchType:0, BatchId: batchId, ReqCount:uint32(len(w.rpcRequests))})
 				if err != nil {
-					signLogger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
+					w.logger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
 				} else {
-					e.parseResponse(response)
-					e.rpcRequests = nil
+					w.parseResponse(response)
+					w.rpcRequests = nil
 				}
+
+				w.logger.Warningf("total sign rpc requests: %d. gossip: %d.", len(w.rpcRequests), w.gossipCount)
+				w.gossipCount = 0
 			}
-			e.m.Unlock()
+			w.m.Unlock()
 
 			cancel()
 			batchId++
@@ -92,15 +106,16 @@ func (e *endorserSignWorker) work() {
 	}()
 }
 
-func (e *endorserSignWorker) parseResponse(response *pb.BatchReply) {
+// this method need to be locked where it is invoked.
+func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 	signatures := response.SgReplies
 	for _, sig := range signatures {
 		reqId, err := strconv.Atoi(sig.ReqId)
-		if err != nil || e.rpcResultMap[reqId] == nil {
-			logger.Fatalf("[endorserSignWorker] the request id(%s) in the rpc reply is not stored before.", sig.ReqId)
+		if err != nil || w.rpcResultMap[reqId] == nil {
+			w.logger.Fatalf("[endorserSignWorker] the request id(%s) in the rpc reply is not stored before.", sig.ReqId)
 		}
 
-		e.rpcResultMap[reqId] <- sig
+		w.rpcResultMap[reqId] <- sig
 	}
 }
 
