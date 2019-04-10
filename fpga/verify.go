@@ -19,7 +19,7 @@ func init() {
 
 type verifyRpcTask struct {
 	in  *pb.BatchRequest
-	out chan<- *pb.BatchReply
+	out chan *pb.BatchReply
 }
 
 type verifyWorker struct {
@@ -27,9 +27,10 @@ type verifyWorker struct {
 	client      	pb.BatchRPCClient
 
 	m               *sync.Mutex
+	syncBatchIdResp map[uint64] chan<-*pb.BatchReply
+
 	c               *sync.Cond
 	syncTaskPool    *list.List
-	syncBatchIdResp map[uint64] chan<-*pb.BatchReply
 }
 
 func (w *verifyWorker) start() {
@@ -41,10 +42,12 @@ func (w *verifyWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.verify")
 
 	w.client = pb.NewBatchRPCClient(conn)
-	w.m = &sync.Mutex{} // need to be deleted
-	w.c = sync.NewCond(w.m)
-	w.syncTaskPool = list.New()
+
+	w.m = &sync.Mutex{}
 	w.syncBatchIdResp = make(map[uint64] chan<-*pb.BatchReply)
+
+	w.c = sync.NewCond(&sync.Mutex{})
+	w.syncTaskPool = list.New()
 }
 
 func (w *verifyWorker) work() {
@@ -58,17 +61,25 @@ func (w *verifyWorker) work() {
 			// get task from pool and store [batchId, channel] in syncBatchIdResp
 			var task *verifyRpcTask
 			w.c.L.Lock()
+			w.logger.Debugf("enter element := w.syncTaskPool.Front()")
 			for w.syncTaskPool.Len() == 0 {
 				w.c.Wait()
 			}
+			w.logger.Debugf("awaik at w.syncTaskPool.Len() == 0")
 			element := w.syncTaskPool.Front()
 			w.syncTaskPool.Remove(element)
 			task = element.Value.(*verifyRpcTask)
 			if task == nil {
 				w.logger.Fatalf("w.taskCh.Front().Value.(*pb.verifyRpcTask) is expected!")
 			}
-			w.syncBatchIdResp[batchId] = task.out
+			w.logger.Debugf("exit element := w.syncTaskPool.Front()")
 			w.c.L.Unlock()
+
+			w.m.Lock()
+			w.logger.Debugf("enter w.syncBatchIdResp[batchId] = task.out")
+			w.syncBatchIdResp[batchId] = task.out
+			w.m.Unlock()
+			w.logger.Debugf("exit w.syncBatchIdResp[batchId] = task.out")
 
 			// prepare rpc parameter
 			task.in.BatchId = batchId
@@ -93,6 +104,12 @@ func (w *verifyWorker) work() {
 func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
 	w.m.Lock()
 	defer w.m.Unlock()
+	defer w.logger.Debugf("exit lock parseResponse")
+	w.logger.Debugf("enter lock parseResponse")
+	
+	if w.syncBatchIdResp[response.BatchId] == nil {
+		w.logger.Fatalf("w.syncBatchIdResp[response.BatchId] is nil! k: %v", response.BatchId)
+	}
 	w.syncBatchIdResp[response.BatchId] <- response
 	close(w.syncBatchIdResp[response.BatchId])
 	delete(w.syncBatchIdResp, response.BatchId)
@@ -100,15 +117,19 @@ func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
 }
 
 func (w *verifyWorker) pushFront(task *verifyRpcTask) {
-	w.c.L.Lock()
-	defer w.c.L.Unlock()
+	w.m.Lock()
+	w.logger.Debugf("enter pushFront")
+	defer w.m.Unlock()
+	defer w.logger.Debugf("exit pushFront")
 	w.syncTaskPool.PushFront(task)
 	w.c.Signal()
 }
 
 func (w *verifyWorker) pushBack(task *verifyRpcTask) {
-	w.c.L.Lock()
-	defer w.c.L.Unlock()
+	w.m.Lock()
+	w.logger.Debugf("enter pushBack")
+	defer w.m.Unlock()
+	defer w.logger.Debugf("exit pushBack")
 	w.syncTaskPool.PushBack(task)
 	w.c.Signal()
 }

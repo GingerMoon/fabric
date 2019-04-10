@@ -22,13 +22,13 @@ func init() {
 
 type endorserSignRpcTask struct {
 	in  *pb.BatchRequest_SignGenRequest
-	out chan<- *pb.BatchReply_SignGenReply
+	out chan *pb.BatchReply_SignGenReply
 }
 
 type endorserSignWorker struct {
-	logger			*flogging.FabricLogger
-	client      pb.BatchRPCClient
-	taskPool    chan *endorserSignRpcTask
+	logger *flogging.FabricLogger
+	client pb.BatchRPCClient
+	taskCh chan *endorserSignRpcTask
 
 	rpcResultMap map[int] chan<-*pb.BatchReply_SignGenReply
 
@@ -54,7 +54,7 @@ func (w *endorserSignWorker) init() {
 	w.rpcResultMap = make(map[int] chan<-*pb.BatchReply_SignGenReply)
 
 	w.client = pb.NewBatchRPCClient(conn)
-	w.taskPool = make(chan *endorserSignRpcTask, w.batchSize)
+	w.taskCh = make(chan *endorserSignRpcTask, w.batchSize)
 }
 
 func (w *endorserSignWorker) work() {
@@ -62,14 +62,8 @@ func (w *endorserSignWorker) work() {
 
 	//collect tasks
 	go func() {
-		for task := range w.taskPool {
+		for task := range w.taskCh {
 			w.m.Lock()
-
-			if strings.Contains(string(debug.Stack()), "gossip") {
-				w.gossipCount++
-				debug.PrintStack()
-			}
-
 			w.rpcRequests = append(w.rpcRequests, task.in)
 			reqId := len(w.rpcRequests) - 1
 			task.in.ReqId = fmt.Sprintf("%064x", reqId)
@@ -91,12 +85,12 @@ func (w *endorserSignWorker) work() {
 				if err != nil {
 					w.logger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
 				} else {
+					w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(w.rpcRequests), w.gossipCount)
+					w.gossipCount = 0
+
 					w.parseResponse(response)
 					w.rpcRequests = nil
 				}
-
-				w.logger.Warningf("total sign rpc requests: %d. gossip: %d.", len(w.rpcRequests), w.gossipCount)
-				w.gossipCount = 0
 			}
 			w.m.Unlock()
 
@@ -120,7 +114,15 @@ func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 }
 
 func EndorserSign(in *pb.BatchRequest_SignGenRequest) *pb.BatchReply_SignGenReply {
+	if strings.Contains(string(debug.Stack()), "gossip") {
+		signWorker.gossipCount++
+		debug.PrintStack()
+	}
+
+	logger.Infof("EndorserSign is invoking sign rpc...")
 	ch := make(chan *pb.BatchReply_SignGenReply)
-	signWorker.taskPool <- &endorserSignRpcTask{in, ch}
-	return <-ch
+	signWorker.taskCh <- &endorserSignRpcTask{in, ch}
+	r := <-ch
+	logger.Infof("EndorserSign finished invoking sign rpc. r: %v")
+	return r
 }

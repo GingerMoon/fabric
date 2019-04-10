@@ -38,6 +38,7 @@ func (s *fpgaServer) Sign(ctx context.Context, env *fpga.BatchRequest) (*fpga.Ba
 		}
 		signature := &fpga.BatchReply_SignGenReply{ReqId: request.ReqId, SignR:r.Bytes(), SignS:s.Bytes()}
 		reply.SgReplies = append(reply.SgReplies, signature)
+		reply.BatchId = env.BatchId
 	}
 	logger.Infof("mock server returned sign rpc. batch_id: %d, ReqCount: %d", reply.BatchId, reply.RepCount)
 	return reply, nil
@@ -66,6 +67,7 @@ func (s *fpgaServer) Verify(ctx context.Context, env *fpga.BatchRequest) (*fpga.
 		}
 		result := &fpga.BatchReply_SignVerReply{ReqId:request.ReqId, Verified:valid}
 		reply.SvReplies = append(reply.SvReplies, result)
+		reply.BatchId = env.BatchId
 	}
 	logger.Infof("mock server returned verify rpc. batch_id: %d, ReqCount: %d", reply.BatchId, reply.RepCount)
 	return reply, nil

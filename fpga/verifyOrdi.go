@@ -23,7 +23,7 @@ func init() {
 
 type verifyOrdiTask struct {
 	in  *pb.BatchRequest_SignVerRequest
-	out chan<- *pb.BatchReply_SignVerReply
+	out chan *pb.BatchReply_SignVerReply
 }
 
 type verifyOrdiWorker struct {
@@ -61,16 +61,13 @@ func (w *verifyOrdiWorker) work() {
 	go func() {
 		for task := range w.taskCh {
 			w.m.Lock()
-
-			if strings.Contains(string(debug.Stack()), "gossip") {
-				w.gossipCount++
-				debug.PrintStack()
-			}
+			w.logger.Debugf("enter lock w.rpcRequests = append(w.rpcRequests, task.in)")
 
 			w.rpcRequests = append(w.rpcRequests, task.in)
 			reqId := len(w.rpcRequests) - 1
 			task.in.ReqId = fmt.Sprintf("%064x", reqId)
 			w.syncResultChMap[reqId] = task.out
+			w.logger.Debugf("exit lock w.rpcRequests = append(w.rpcRequests, task.in)")
 			w.m.Unlock()
 		}
 	}()
@@ -82,21 +79,22 @@ func (w *verifyOrdiWorker) work() {
 			time.Sleep( w.interval * time.Millisecond)
 
 			w.m.Lock()
+			w.logger.Debugf("enter lock for w.rpcRequests = nil")
 			if len(w.rpcRequests) > 0 {
 				in := &pb.BatchRequest{SvRequests:w.rpcRequests}
 				out := make(chan *pb.BatchReply)
 				task := &verifyRpcTask{in, out}
-				vk.pushFront(task)
+				vk.pushBack(task)
 
 				// parse rpc response
 				for response := range out {
+					w.logger.Debugf("total verify rpc requests: %d. gossip: %d.", len(w.rpcRequests), w.gossipCount)
 					w.parseResponse(response)
 					w.rpcRequests = nil
+					w.gossipCount = 0
 				}
-
-				w.logger.Warningf("total verify rpc requests: %d. gossip: %d.", len(w.rpcRequests), w.gossipCount)
-				w.gossipCount = 0
 			}
+			w.logger.Debugf("exit lock for w.rpcRequests = nil")
 			w.m.Unlock()
 			batchId++
 		}
@@ -116,13 +114,19 @@ func (w *verifyOrdiWorker) parseResponse(response *pb.BatchReply) {
 	}
 }
 
-func (w *verifyOrdiWorker) addToTaskPool(task *verifyOrdiTask){
+func (w *verifyOrdiWorker) putToTaskCh(task *verifyOrdiTask){
 	w.taskCh <- task
 }
 
 func EndorserVerify(in *pb.BatchRequest_SignVerRequest) bool {
+	if strings.Contains(string(debug.Stack()), "gossip") {
+		ordiWorker.gossipCount++
+	}
+
+	logger.Debugf("EndorserVerify is invoking verify rpc...")
 	ch := make(chan *pb.BatchReply_SignVerReply)
-	ordiWorker.addToTaskPool(&verifyOrdiTask{in, ch})
+	ordiWorker.putToTaskCh(&verifyOrdiTask{in, ch})
 	r := <-ch
+	logger.Debugf("EndorserVerify finished invoking verify rpc. result: %v", r)
 	return r.Verified
 }

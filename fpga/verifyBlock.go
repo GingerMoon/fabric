@@ -6,6 +6,7 @@ import (
 )
 
 func CommitBlockVerify(svRequests []*pb.BatchRequest_SignVerRequest) error {
+	logger.Infof("CommitBlockVerify is invoking verify rpc...")
 	if len(svRequests) == 0 {
 		return errors.Errorf("CommitBlockVerify len(svRequests) is 0")
 	}
@@ -22,5 +23,6 @@ func CommitBlockVerify(svRequests []*pb.BatchRequest_SignVerRequest) error {
 			}
 		}
 	}
+	logger.Infof("CommitBlockVerify finished invoking verify rpc...")
 	return nil
 }
