@@ -56,8 +56,6 @@ func (w *verifyWorker) work() {
 	go func() {
 		var batchId uint64 = 0
 		for true {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
 			// get task from pool and store [batchId, channel] in syncBatchIdResp
 			var task *verifyRpcTask
 			w.c.L.Lock()
@@ -90,6 +88,7 @@ func (w *verifyWorker) work() {
 			}
 
 			// invoke the rpc
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			response, err := w.client.Verify(ctx, task.in)
 			if err != nil {
 				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
