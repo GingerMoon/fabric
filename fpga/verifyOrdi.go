@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
+	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -48,7 +49,13 @@ func (w *verifyOrdiWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.ordiVerify")
 	w.m = sync.Mutex{}
 	w.batchSize = 5000
-	w.interval = 100
+	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
+	if err != nil {
+		w.logger.Warningf("FPGA_BATCH_GEN_INTERVAL(%s)(ms) is not set correctly!, not the batch_gen_interval is set to default as 50 ms",
+			os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
+	}
+	w.interval = time.Duration(tmp)
+
 	w.syncResultChMap = make(map[int] chan<-*pb.BatchReply_SignVerReply)
 
 	w.taskCh = make(chan *verifyOrdiTask, w.batchSize)
@@ -65,7 +72,7 @@ func (w *verifyOrdiWorker) work() {
 
 			w.rpcRequests = append(w.rpcRequests, task.in)
 			reqId := len(w.rpcRequests) - 1
-			task.in.ReqId = fmt.Sprintf("%064x", reqId)
+			task.in.ReqId = fmt.Sprintf("%064d", reqId)
 			w.syncResultChMap[reqId] = task.out
 			w.logger.Debugf("exit lock w.rpcRequests = append(w.rpcRequests, task.in)")
 			w.m.Unlock()

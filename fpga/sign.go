@@ -66,7 +66,7 @@ func (w *endorserSignWorker) work() {
 			w.m.Lock()
 			w.rpcRequests = append(w.rpcRequests, task.in)
 			reqId := len(w.rpcRequests) - 1
-			task.in.ReqId = fmt.Sprintf("%064x", reqId)
+			task.in.ReqId = fmt.Sprintf("%064d", reqId)
 			w.m.Unlock()
 			w.rpcResultMap[reqId] = task.out
 		}

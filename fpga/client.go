@@ -10,10 +10,10 @@ var (
 	logger = flogging.MustGetLogger("fpga")
 	serverAddr = os.Getenv("FPGA_SERVER_ADDR")
 	conn *grpc.ClientConn
-	err error
 )
 
 func init() {
+	var err error
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithInsecure())
 	logger.Infof("dialed server address: %s", serverAddr)
