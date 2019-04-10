@@ -48,7 +48,7 @@ func (e *endorserSignWorker) init() {
 	e.interval = 100
 	e.rpcResultMap = make(map[int] chan<-*pb.BatchReply_SignGenReply)
 
-	e.client = pb.NewBatchRPCClient(connSign)
+	e.client = pb.NewBatchRPCClient(conn)
 	e.taskPool = make(chan *endorserSignRpcTask, e.batchSize)
 }
 

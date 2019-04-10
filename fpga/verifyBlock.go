@@ -14,7 +14,7 @@ var (
 )
 
 func init() {
-	blockVerifyWorker.client = pb.NewBatchRPCClient(connBlockCommitterVerify)
+	blockVerifyWorker.client = pb.NewBatchRPCClient(conn)
 }
 
 type verifyBlockWorker struct {
