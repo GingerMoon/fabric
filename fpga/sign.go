@@ -81,10 +81,13 @@ func (w *endorserSignWorker) work() {
 
 			w.m.Lock()
 			if len(w.rpcRequests) > 0 {
-				response, err := w.client.Sign(ctx, &pb.BatchRequest{SgRequests:w.rpcRequests, BatchType:0, BatchId: batchId, ReqCount:uint32(len(w.rpcRequests))})
+				request := &pb.BatchRequest{SgRequests:w.rpcRequests, BatchType:0, BatchId: batchId, ReqCount:uint32(len(w.rpcRequests))}
+				w.logger.Errorf("rpc request: %v", *request)
+				response, err := w.client.Sign(ctx, request)
 				if err != nil {
 					w.logger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
 				} else {
+					w.logger.Errorf("rpc response: %v", *response)
 					w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(w.rpcRequests), w.gossipCount)
 					w.gossipCount = 0
 
