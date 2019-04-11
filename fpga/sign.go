@@ -106,6 +106,9 @@ func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 	for _, sig := range signatures {
 		reqId, err := strconv.Atoi(sig.ReqId)
 		if err != nil || w.rpcResultMap[reqId] == nil {
+			for k, v := range w.rpcResultMap {
+				w.logger.Errorf("w.rpcResultMap[%v]: %v", k, v)
+			}
 			w.logger.Fatalf("[endorserSignWorker] the request id(%s) in the rpc reply is not stored before.", sig.ReqId)
 		}
 

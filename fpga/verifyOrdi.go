@@ -51,7 +51,7 @@ func (w *verifyOrdiWorker) init() {
 	w.batchSize = 5000
 	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
 	if err != nil {
-		w.logger.Warningf("FPGA_BATCH_GEN_INTERVAL(%s)(ms) is not set correctly!, not the batch_gen_interval is set to default as 50 ms",
+		w.logger.Fatalf("FPGA_BATCH_GEN_INTERVAL(%s)(ms) is not set correctly!, not the batch_gen_interval is set to default as 50 ms",
 			os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
 	}
 	w.interval = time.Duration(tmp)

@@ -13,6 +13,10 @@ var (
 )
 
 func init() {
+	logger.Infof("FPGA_MOCK: ", os.Getenv("FPGA_MOCK"))
+	logger.Infof("FPGA_SERVER_ADDR: ", serverAddr)
+	logger.Infof("FPGA_BATCH_GEN_INTERVAL: ", os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
+
 	var err error
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithInsecure())

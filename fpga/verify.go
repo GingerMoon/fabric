@@ -76,6 +76,9 @@ func (w *verifyWorker) work() {
 			w.m.Lock()
 			w.logger.Debugf("enter w.syncBatchIdResp[batchId] = task.out")
 			w.syncBatchIdResp[batchId] = task.out
+			for k, v := range w.syncBatchIdResp {
+				w.logger.Errorf("w.syncBatchIdResp[%v]: %v", k, v)
+			}
 			w.m.Unlock()
 			w.logger.Debugf("exit w.syncBatchIdResp[batchId] = task.out")
 
@@ -86,6 +89,8 @@ func (w *verifyWorker) work() {
 			if len(task.in.SvRequests) == 0 {
 				w.logger.Fatalf("why len(task.in.SvRequests) is 0?")
 			}
+
+			w.logger.Infof("the batch id for the verify rpc is: %d", batchId)
 
 			// invoke the rpc
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -107,6 +112,9 @@ func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
 	w.logger.Debugf("enter lock parseResponse")
 	
 	if w.syncBatchIdResp[response.BatchId] == nil {
+		for k, v := range w.syncBatchIdResp {
+			w.logger.Errorf("w.syncBatchIdResp[%v]: %v", k, v)
+		}
 		w.logger.Fatalf("w.syncBatchIdResp[response.BatchId] is nil! k: %v", response.BatchId)
 	}
 	w.syncBatchIdResp[response.BatchId] <- response
