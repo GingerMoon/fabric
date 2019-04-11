@@ -54,7 +54,7 @@ func (w *verifyWorker) work() {
 	w.logger.Infof("verifyWorker starts to work.")
 
 	go func() {
-		var batchId uint64 = 1 // 0 will be ignored by protobuf? driver?
+		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
 		for true {
 			// get task from pool and store [batchId, channel] in syncBatchIdResp
 			var task *verifyRpcTask
