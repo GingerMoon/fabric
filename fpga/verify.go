@@ -94,13 +94,13 @@ func (w *verifyWorker) work() {
 
 			// invoke the rpc
 
-			w.logger.Errorf("rpc request: %v", *task.in)
+			w.logger.Debugf("rpc request: %v", *task.in)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			response, err := w.client.Verify(ctx, task.in)
 			if err != nil {
 				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
 			}
-			w.logger.Errorf("rpc response: %v", *response)
+			w.logger.Debugf("rpc response: %v", *response)
 
 			cancel()
 			w.parseResponse(response) // TODO this need to be changed to: go e.parseResponse(response)
