@@ -54,7 +54,7 @@ func (w *verifyWorker) work() {
 	w.logger.Infof("verifyWorker starts to work.")
 
 	go func() {
-		var batchId uint64 = 0
+		var batchId uint64 = 1 // 0 will be ignored by protobuf? driver?
 		for true {
 			// get task from pool and store [batchId, channel] in syncBatchIdResp
 			var task *verifyRpcTask
@@ -93,8 +93,12 @@ func (w *verifyWorker) work() {
 			w.logger.Infof("the batch id for the verify rpc is: %d", batchId)
 
 			// invoke the rpc
+
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			response, err := w.client.Verify(ctx, task.in)
+			w.logger.Errorf("rpc request: %v", *task.in)
+			w.logger.Errorf("rpc response: %v", *response)
+
 			if err != nil {
 				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
 			}

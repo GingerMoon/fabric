@@ -74,7 +74,7 @@ func (w *endorserSignWorker) work() {
 
 	// invoke the rpc every interval milliseconds
 	go func() {
-		var batchId uint64 = 0
+		var batchId uint64 = 1 // 0 will be ignored by protobuf? driver?
 		for true {
 			time.Sleep( w.interval * time.Millisecond)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
