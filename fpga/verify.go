@@ -103,7 +103,7 @@ func (w *verifyWorker) work() {
 				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
 			}
 			cancel()
-			w.parseResponse(response)
+			w.parseResponse(response) // TODO this need to be changed to: go e.parseResponse(response)
 			batchId++
 		}
 	}()

@@ -88,7 +88,7 @@ func (w *endorserSignWorker) work() {
 					w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(w.rpcRequests), w.gossipCount)
 					w.gossipCount = 0
 
-					w.parseResponse(response)
+					w.parseResponse(response) // TODO this need to be changed to: go e.parseResponse(response)
 					w.rpcRequests = nil
 				}
 			}
