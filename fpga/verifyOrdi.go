@@ -116,7 +116,6 @@ func (w *verifyOrdiWorker) work() {
 				for response := range out {
 					w.logger.Debugf("total verify rpc requests: %d. gossip: %d.", w.syncSvReqList.Len(), w.gossipCount)
 					w.parseResponse(response)
-					w.syncSvReqList = nil
 					w.gossipCount = 0
 				}
 			}
