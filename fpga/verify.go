@@ -5,10 +5,7 @@ import (
 	"context"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
-	"runtime/debug"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -36,7 +33,7 @@ type verifyWorker struct {
 	c               *sync.Cond
 	syncTaskPool    *list.List
 
-	gossipCount int32 // todo to be deleted. it's only for investigation purpose.
+	//gossipCount int32 // todo to be deleted. it's only for investigation purpose.
 }
 
 func (w *verifyWorker) start() {
@@ -112,7 +109,7 @@ func (w *verifyWorker) work() {
 					size += unsafe.Sizeof(req.XXX_unrecognized)
 				}
 				w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, task.in)
-				w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
+				//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
 				// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 				// attention! the results of syncTaskPool and syncBatchIdResp might be not correct.
@@ -133,8 +130,8 @@ func (w *verifyWorker) work() {
 			w.logger.Debugf("rpc response: %v", *response)
 
 			// gossip
-			w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(task.in.SvRequests), atomic.LoadInt32(&w.gossipCount))
-			atomic.StoreInt32(&w.gossipCount, 0)
+			//w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(task.in.SvRequests), atomic.LoadInt32(&w.gossipCount))
+			//atomic.StoreInt32(&w.gossipCount, 0)
 
 			cancel()
 			w.parseResponse(response) // TODO this need to be changed to: go e.parseResponse(response)
@@ -163,10 +160,10 @@ func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
 
 func (w *verifyWorker) pushFront(task *verifyRpcTask) {
 	//gossip
-	if strings.Contains(string(debug.Stack()), "gossip") {
-		atomic.AddInt32(&w.gossipCount, 1)
-		debug.PrintStack()
-	}
+	//if strings.Contains(string(debug.Stack()), "gossip") {
+	//	atomic.AddInt32(&w.gossipCount, 1)
+	//	debug.PrintStack()
+	//}
 
 	w.m.Lock()
 	w.logger.Debugf("enter pushFront")
@@ -178,10 +175,10 @@ func (w *verifyWorker) pushFront(task *verifyRpcTask) {
 
 func (w *verifyWorker) pushBack(task *verifyRpcTask) {
 	//gossip
-	if strings.Contains(string(debug.Stack()), "gossip") {
-		atomic.AddInt32(&w.gossipCount, 1)
-		debug.PrintStack()
-	}
+	//if strings.Contains(string(debug.Stack()), "gossip") {
+	//	atomic.AddInt32(&w.gossipCount, 1)
+	//	debug.PrintStack()
+	//}
 
 	w.m.Lock()
 	w.logger.Debugf("enter pushBack")

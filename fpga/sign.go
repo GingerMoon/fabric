@@ -7,11 +7,8 @@ import (
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
 	"os"
-	"runtime/debug"
 	"strconv"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -42,7 +39,7 @@ type endorserSignWorker struct {
 	batchSize int
 	interval time.Duration // milliseconds
 
-	gossipCount int32 // todo to be deleted. it's only for investigation purpose.
+	//gossipCount int32 // todo to be deleted. it's only for investigation purpose.
 }
 
 func (w *endorserSignWorker) start() {
@@ -128,7 +125,7 @@ func (w *endorserSignWorker) work() {
 					}
 					w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, request)
 					w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
-					w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
+					//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
 					// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 					// attention! the results of rpcRequests and rpcResultMap might be not correct.
@@ -144,8 +141,8 @@ func (w *endorserSignWorker) work() {
 					w.logger.Debugf("rpc response: %v", *response)
 
 					// gossip
-					w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
-					atomic.StoreInt32(&w.gossipCount, 0)
+					//w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
+					//atomic.StoreInt32(&w.gossipCount, 0)
 
 					w.parseResponse(response) // TODO this need to be changed to: go e.parseResponse(response)
 				}
@@ -179,10 +176,10 @@ func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 
 func EndorserSign(in *pb.BatchRequest_SignGenRequest) *pb.BatchReply_SignGenReply {
 	//gossip
-	if strings.Contains(string(debug.Stack()), "gossip") {
-		atomic.AddInt32(&signWorker.gossipCount, 1)
-		debug.PrintStack()
-	}
+	//if strings.Contains(string(debug.Stack()), "gossip") {
+	//	atomic.AddInt32(&signWorker.gossipCount, 1)
+	//	debug.PrintStack()
+	//}
 
 	signWorker.logger.Debugf("EndorserSign is invoking sign rpc...")
 	ch := make(chan *pb.BatchReply_SignGenReply)
