@@ -2,9 +2,12 @@ package fpga
 
 import (
 	"container/list"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"fmt"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
+	"math/big"
 	"os"
 	"runtime/debug"
 	"strconv"
@@ -157,5 +160,21 @@ func EndorserVerify(in *pb.BatchRequest_SignVerRequest) bool {
 	ordiWorker.putToTaskCh(&verifyOrdiTask{in, ch})
 	r := <-ch
 	logger.Debugf("EndorserVerify finished invoking verify rpc. result: %v", r)
+	if !r.Verified {
+		r := &big.Int{}
+		r.SetBytes(in.SignR)
+		s := &big.Int{}
+		s.SetBytes(in.SignS)
+
+		x := &big.Int{}
+		x.SetBytes(in.Px)
+		y := &big.Int{}
+		y.SetBytes(in.Py)
+		pubkey := ecdsa.PublicKey{Curve:elliptic.P256(), X:x, Y:y}
+		succeed := ecdsa.Verify(&pubkey, in.Hash[:], r, s)
+		if succeed {
+			panic("The signature is invalid [verified by FPGA], but it is valid by go library.")
+		}
+	}
 	return r.Verified
 }

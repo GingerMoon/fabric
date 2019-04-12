@@ -1,6 +1,7 @@
 package fpga
 
 import (
+	commonerrors "github.com/hyperledger/fabric/common/errors"
 	pb "github.com/hyperledger/fabric/protos/fpga"
 	"github.com/pkg/errors"
 )
@@ -19,7 +20,9 @@ func CommitBlockVerify(svRequests []*pb.BatchRequest_SignVerRequest) error {
 		verifyResults := reply.SvReplies
 		for i, result := range verifyResults {
 			if !result.Verified {
-				return errors.Errorf("CommitBlockVerify (Endorsement or CheckCreator) failed. internal index: %d. ", i)
+				return &commonerrors.VSCCEndorsementPolicyError {
+					Err: errors.Errorf("CommitBlockVerify (Endorsement or CheckCreator) failed. internal index: %d. ", i), // TODO the index(i) is not accurate.
+				}
 			}
 		}
 	}

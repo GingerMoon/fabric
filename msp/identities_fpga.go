@@ -9,14 +9,12 @@ package msp
 import (
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/utils"
-	commonerrors "github.com/hyperledger/fabric/common/errors"
 	"github.com/hyperledger/fabric/fpga"
 	pb "github.com/hyperledger/fabric/protos/fpga"
 	"github.com/hyperledger/fabric/protos/msp"
@@ -155,24 +153,7 @@ func (id *FpgaIdentity) EndorserVerify(msg []byte, sig []byte) error {
 
 	valid := fpga.EndorserVerify(in)
 	if !valid {
-		r := &big.Int{}
-		r.SetBytes(in.SignR)
-		s := &big.Int{}
-		s.SetBytes(in.SignS)
-
-		x := &big.Int{}
-		x.SetBytes(in.Px)
-		y := &big.Int{}
-		y.SetBytes(in.Py)
-		pubkey := ecdsa.PublicKey{Curve:elliptic.P256(), X:x, Y:y}
-		succeed := ecdsa.Verify(&pubkey, in.Hash[:], r, s)
-		if succeed {
-			panic("The signature is invalid [verified by FPGA], but it is valid by go library.")
-		}
-
-		return &commonerrors.VSCCEndorsementPolicyError{
-			Err: errors.New("The signature is invalid [verified by FPGA]. "),
-		}
+		return errors.New("The signature is invalid [verified by FPGA]. ")
 	}
 	return nil
 }
