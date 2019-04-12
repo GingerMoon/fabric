@@ -151,10 +151,10 @@ func EndorserSign(in *pb.BatchRequest_SignGenRequest) *pb.BatchReply_SignGenRepl
 		debug.PrintStack()
 	}
 
-	logger.Infof("EndorserSign is invoking sign rpc...")
+	logger.Debugf("EndorserSign is invoking sign rpc...")
 	ch := make(chan *pb.BatchReply_SignGenReply)
 	signWorker.taskCh <- &endorserSignRpcTask{in, ch}
 	r := <-ch
-	logger.Infof("EndorserSign finished invoking sign rpc. r: %v")
+	logger.Debugf("EndorserSign finished invoking sign rpc. result: %v", r)
 	return r
 }
