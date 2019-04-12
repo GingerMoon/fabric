@@ -7,6 +7,7 @@ import (
 	pb "github.com/hyperledger/fabric/protos/fpga"
 	"sync"
 	"time"
+	"unsafe"
 )
 
 var (
@@ -92,7 +93,7 @@ func (w *verifyWorker) work() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			response, err := w.client.Verify(ctx, task.in)
 			if err != nil {
-				w.logger.Errorf("Exiting due to the failed rpc request: %v", task.in)
+				w.logger.Errorf("Exiting due to the failed rpc request(the size is: %d): %v", unsafe.Sizeof(task.in), task.in)
 
 				// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 				// attention! the results of syncTaskPool and syncBatchIdResp might be not correct.

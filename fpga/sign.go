@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 )
 
 var (
@@ -92,7 +93,7 @@ func (w *endorserSignWorker) work() {
 				w.logger.Debugf("rpc request: %v", *request)
 				response, err := w.client.Sign(ctx, request)
 				if err != nil {
-					w.logger.Errorf("Exiting due to the failed rpc request: %v", request)
+					w.logger.Errorf("Exiting due to the failed rpc request(the size is %d): %v", unsafe.Sizeof(request), request)
 					w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
 					w.logger.Errorf("gossip count: %d", w.gossipCount)
 
