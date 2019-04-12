@@ -1,6 +1,7 @@
 package fpga
 
 import (
+	"container/list"
 	"context"
 	"fmt"
 	"github.com/hyperledger/fabric/common/flogging"
@@ -36,7 +37,7 @@ type endorserSignWorker struct {
 	rpcResultMap map[int] chan<-*pb.BatchReply_SignGenReply
 
 	m *sync.Mutex
-	rpcRequests  []*pb.BatchRequest_SignGenRequest
+	syncSgReqList *list.List
 
 	batchSize int
 	interval time.Duration // milliseconds
@@ -52,7 +53,9 @@ func (w *endorserSignWorker) start() {
 func (w *endorserSignWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.sign")
 	w.m = &sync.Mutex{}
-	w.batchSize = 1500
+	w.batchSize = 10000
+	w.syncSgReqList = list.New()
+
 	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
 	if err != nil {
 		w.logger.Fatalf("FPGA_BATCH_GEN_INTERVAL(%s)(ms) is not set correctly!, not the batch_gen_interval is set to default as 50 ms",
@@ -74,8 +77,8 @@ func (w *endorserSignWorker) work() {
 	go func() {
 		for task := range w.taskCh {
 			w.m.Lock()
-			w.rpcRequests = append(w.rpcRequests, task.in)
-			reqId := len(w.rpcRequests) - 1
+			w.syncSgReqList.PushBack(task.in)
+			reqId := w.syncSgReqList.Len() - 1
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)
 			w.m.Unlock()
 			w.rpcResultMap[reqId] = task.out
@@ -91,8 +94,22 @@ func (w *endorserSignWorker) work() {
 
 			// rpc
 			w.m.Lock()
-			if len(w.rpcRequests) > 0 {
-				request := &pb.BatchRequest{SgRequests:w.rpcRequests, BatchType:0, BatchId: batchId, ReqCount:uint32(len(w.rpcRequests))}
+			if w.syncSgReqList.Len() > 0 {
+				var sgReqs []*pb.BatchRequest_SignGenRequest
+				for i := 0; i < w.batchSize; i++ {
+					element := w.syncSgReqList.Front()
+					w.syncSgReqList.Remove(element)
+					req := element.Value.(*pb.BatchRequest_SignGenRequest)
+					if req == nil {
+						w.logger.Fatalf("why req: = element.Value.(*pb.BatchRequest_SignGenRequest) failed?!!")
+					}
+					sgReqs = append(sgReqs, req)
+				}
+				if w.syncSgReqList.Len() > w.batchSize {
+					w.logger.Warningf("current w.syncSvReqList.Len is %d, which is bigger than the batch size(%d)", w.syncSgReqList.Len(), w.batchSize)
+				}
+
+				request := &pb.BatchRequest{SgRequests:sgReqs, BatchType:0, BatchId: batchId, ReqCount:uint32(len(sgReqs))}
 				w.logger.Debugf("rpc request: %v", *request)
 				response, err := w.client.Sign(ctx, request)
 				if err != nil {
@@ -113,9 +130,7 @@ func (w *endorserSignWorker) work() {
 					// attention! the results of rpcRequests and rpcResultMap might be not correct.
 					// because they might be modified in another go routine.
 					// we don't use lock to avoid the possible deadlock which is an unnecessary risk.
-					for _, req := range w.rpcRequests {
-						w.logger.Errorf("pending request: %v", req)
-					}
+					w.logger.Errorf("pending w.syncSvReqList.Len is %d", w.syncSgReqList.Len())
 					for k, v := range w.rpcResultMap {
 						w.logger.Errorf("w.rpcResultMap[%v]: %v", k, v)
 					}
@@ -125,11 +140,10 @@ func (w *endorserSignWorker) work() {
 					w.logger.Debugf("rpc response: %v", *response)
 
 					// gossip
-					w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(w.rpcRequests), atomic.LoadInt32(&w.gossipCount))
+					w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
 					atomic.StoreInt32(&w.gossipCount, 0)
 
 					w.parseResponse(response) // TODO this need to be changed to: go e.parseResponse(response)
-					w.rpcRequests = nil
 				}
 			}
 			w.m.Unlock()
