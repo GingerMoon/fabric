@@ -116,6 +116,9 @@ func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 		}
 
 		w.rpcResultMap[reqId] <- sig
+		close(w.rpcResultMap[reqId])
+		delete(w.rpcResultMap, reqId)
+
 	}
 }
 
