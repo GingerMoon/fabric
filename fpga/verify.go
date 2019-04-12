@@ -111,7 +111,7 @@ func (w *verifyWorker) work() {
 					size += unsafe.Sizeof(req.XXX_sizecache)
 					size += unsafe.Sizeof(req.XXX_unrecognized)
 				}
-				w.logger.Errorf("Exiting due to the failed rpc request(the size is %d): %v", size, task.in)
+				w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, task.in)
 				w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
 				// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

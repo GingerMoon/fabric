@@ -105,7 +105,7 @@ func (w *endorserSignWorker) work() {
 						size += unsafe.Sizeof(req.XXX_sizecache)
 						size += unsafe.Sizeof(req.XXX_unrecognized)
 					}
-					w.logger.Errorf("Exiting due to the failed rpc request(the size is %d): %v", size, request)
+					w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, request)
 					w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
 					w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
