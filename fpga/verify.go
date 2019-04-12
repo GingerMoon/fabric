@@ -90,14 +90,27 @@ func (w *verifyWorker) work() {
 				w.logger.Fatalf("why len(task.in.SvRequests) is 0?")
 			}
 
-			w.logger.Infof("the batch id for the verify rpc is: %d", batchId)
-
 			// invoke the rpc
-
 			w.logger.Debugf("rpc request: %v", *task.in)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			response, err := w.client.Verify(ctx, task.in)
 			if err != nil {
+				w.logger.Errorf("Exiting due to the failed rpc request: %v", task.in)
+
+				// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+				// attention! the results of syncTaskPool and syncBatchIdResp might be not correct.
+				// because they might be modified in another go routine.
+				// we don't use lock to avoid the possible deadlock which is an unnecessary risk.
+				for i := 0; i < w.syncTaskPool.Len(); i++ {
+					element := w.syncTaskPool.Front()
+					w.syncTaskPool.Remove(element)
+					task = element.Value.(*verifyRpcTask)
+					w.logger.Errorf("pending request: %v",  task)
+				}
+				for k, v := range w.syncBatchIdResp {
+					w.logger.Errorf("w.rpcResultMap[%v]: %v", k, v)
+				}
+
 				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
 			}
 			w.logger.Debugf("rpc response: %v", *response)

@@ -85,6 +85,21 @@ func (w *endorserSignWorker) work() {
 				w.logger.Debugf("rpc request: %v", *request)
 				response, err := w.client.Sign(ctx, request)
 				if err != nil {
+					w.logger.Errorf("Exiting due to the failed rpc request: %v", request)
+					w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
+					w.logger.Errorf("gossip count: %d", w.gossipCount)
+
+					// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+					// attention! the results of rpcRequests and rpcResultMap might be not correct.
+					// because they might be modified in another go routine.
+					// we don't use lock to avoid the possible deadlock which is an unnecessary risk.
+					for _, req := range w.rpcRequests {
+						w.logger.Errorf("pending request: %v", req)
+					}
+					for k, v := range w.rpcResultMap {
+						w.logger.Errorf("w.rpcResultMap[%v]: %v", k, v)
+					}
+
 					w.logger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
 				} else {
 					w.logger.Debugf("rpc response: %v", *response)
