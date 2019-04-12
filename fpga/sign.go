@@ -95,8 +95,12 @@ func (w *endorserSignWorker) work() {
 			// rpc
 			w.m.Lock()
 			if w.syncSgReqList.Len() > 0 {
+				size := w.syncSgReqList.Len()
+				if size > w.batchSize {
+					size = w.batchSize
+				}
 				var sgReqs []*pb.BatchRequest_SignGenRequest
-				for i := 0; i < w.batchSize; i++ {
+				for i := 0; i < size; i++ {
 					element := w.syncSgReqList.Front()
 					w.syncSgReqList.Remove(element)
 					req := element.Value.(*pb.BatchRequest_SignGenRequest)
@@ -106,7 +110,7 @@ func (w *endorserSignWorker) work() {
 					sgReqs = append(sgReqs, req)
 				}
 				if w.syncSgReqList.Len() > w.batchSize {
-					w.logger.Warningf("current w.syncSvReqList.Len is %d, which is bigger than the batch size(%d)", w.syncSgReqList.Len(), w.batchSize)
+					w.logger.Warningf("current w.syncSgReqList.Len is %d, which is bigger than the batch size(%d)", w.syncSgReqList.Len(), w.batchSize)
 				}
 
 				request := &pb.BatchRequest{SgRequests:sgReqs, BatchType:0, BatchId: batchId, ReqCount:uint32(len(sgReqs))}
@@ -130,7 +134,7 @@ func (w *endorserSignWorker) work() {
 					// attention! the results of rpcRequests and rpcResultMap might be not correct.
 					// because they might be modified in another go routine.
 					// we don't use lock to avoid the possible deadlock which is an unnecessary risk.
-					w.logger.Errorf("pending w.syncSvReqList.Len is %d", w.syncSgReqList.Len())
+					w.logger.Errorf("pending w.syncSgReqList.Len is %d", w.syncSgReqList.Len())
 					for k, v := range w.rpcResultMap {
 						w.logger.Errorf("w.rpcResultMap[%v]: %v", k, v)
 					}

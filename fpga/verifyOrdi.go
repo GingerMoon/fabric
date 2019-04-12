@@ -93,8 +93,12 @@ func (w *verifyOrdiWorker) work() {
 			w.m.Lock()
 			w.logger.Debugf("enter lock for w.syncSvReqList = nil")
 			if w.syncSvReqList.Len() > 0 {
+				size := w.syncSvReqList.Len()
+				if size > w.batchSize {
+					size = w.batchSize
+				}
 				var svReqs []*pb.BatchRequest_SignVerRequest
-				for i := 0; i < w.batchSize; i++ {
+				for i := 0; i < size; i++ {
 					element := w.syncSvReqList.Front()
 					w.syncSvReqList.Remove(element)
 					req := element.Value.(*pb.BatchRequest_SignVerRequest)
