@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -40,7 +41,7 @@ type endorserSignWorker struct {
 	batchSize int
 	interval time.Duration // milliseconds
 
-	gossipCount int // todo to be deleted. it's only for investigation purpose.
+	gossipCount int32 // todo to be deleted. it's only for investigation purpose.
 }
 
 func (w *endorserSignWorker) start() {
@@ -63,6 +64,7 @@ func (w *endorserSignWorker) init() {
 
 	w.client = pb.NewBatchRPCClient(conn)
 	w.taskCh = make(chan *endorserSignRpcTask, w.batchSize)
+
 }
 
 func (w *endorserSignWorker) work() {
@@ -87,15 +89,25 @@ func (w *endorserSignWorker) work() {
 			time.Sleep( w.interval * time.Microsecond)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
+			// rpc
 			w.m.Lock()
 			if len(w.rpcRequests) > 0 {
 				request := &pb.BatchRequest{SgRequests:w.rpcRequests, BatchType:0, BatchId: batchId, ReqCount:uint32(len(w.rpcRequests))}
 				w.logger.Debugf("rpc request: %v", *request)
 				response, err := w.client.Sign(ctx, request)
 				if err != nil {
-					w.logger.Errorf("Exiting due to the failed rpc request(the size is %d): %v", unsafe.Sizeof(request), request)
+					var size uintptr = 0
+					for _, req := range request.SgRequests {
+						size += unsafe.Sizeof(req.D)
+						size += unsafe.Sizeof(req.Hash)
+						size += unsafe.Sizeof(req.ReqId)
+						size += unsafe.Sizeof(req.XXX_NoUnkeyedLiteral)
+						size += unsafe.Sizeof(req.XXX_sizecache)
+						size += unsafe.Sizeof(req.XXX_unrecognized)
+					}
+					w.logger.Errorf("Exiting due to the failed rpc request(the size is %d): %v", size, request)
 					w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
-					w.logger.Errorf("gossip count: %d", w.gossipCount)
+					w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
 					// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 					// attention! the results of rpcRequests and rpcResultMap might be not correct.
@@ -111,8 +123,10 @@ func (w *endorserSignWorker) work() {
 					w.logger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
 				} else {
 					w.logger.Debugf("rpc response: %v", *response)
-					w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(w.rpcRequests), w.gossipCount)
-					w.gossipCount = 0
+
+					// gossip
+					w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(w.rpcRequests), atomic.LoadInt32(&w.gossipCount))
+					atomic.StoreInt32(&w.gossipCount, 0)
 
 					w.parseResponse(response) // TODO this need to be changed to: go e.parseResponse(response)
 					w.rpcRequests = nil
@@ -146,15 +160,16 @@ func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 }
 
 func EndorserSign(in *pb.BatchRequest_SignGenRequest) *pb.BatchReply_SignGenReply {
+	//gossip
 	if strings.Contains(string(debug.Stack()), "gossip") {
-		signWorker.gossipCount++
+		atomic.AddInt32(&signWorker.gossipCount, 1)
 		debug.PrintStack()
 	}
 
-	logger.Debugf("EndorserSign is invoking sign rpc...")
+	signWorker.logger.Debugf("EndorserSign is invoking sign rpc...")
 	ch := make(chan *pb.BatchReply_SignGenReply)
 	signWorker.taskCh <- &endorserSignRpcTask{in, ch}
 	r := <-ch
-	logger.Debugf("EndorserSign finished invoking sign rpc. result: %v", r)
+	signWorker.logger.Debugf("EndorserSign finished invoking sign rpc. result: %v", r)
 	return r
 }
