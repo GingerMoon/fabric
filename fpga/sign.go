@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
+	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -49,8 +50,14 @@ func (w *endorserSignWorker) start() {
 func (w *endorserSignWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.sign")
 	w.m = &sync.Mutex{}
-	w.batchSize = 5000
-	w.interval = 100
+	w.batchSize = 1500
+	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
+	if err != nil {
+		w.logger.Fatalf("FPGA_BATCH_GEN_INTERVAL(%s)(ms) is not set correctly!, not the batch_gen_interval is set to default as 50 ms",
+			os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
+	}
+	w.interval = time.Duration(tmp)
+
 	w.rpcResultMap = make(map[int] chan<-*pb.BatchReply_SignGenReply)
 
 	w.client = pb.NewBatchRPCClient(conn)
@@ -72,11 +79,11 @@ func (w *endorserSignWorker) work() {
 		}
 	}()
 
-	// invoke the rpc every interval milliseconds
+	// invoke the rpc every interval Microsecond
 	go func() {
 		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
 		for true {
-			time.Sleep( w.interval * time.Millisecond)
+			time.Sleep( w.interval * time.Microsecond)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
 			w.m.Lock()

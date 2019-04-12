@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// ordinary work collects various verify(except the verify in block commit) into a pool and cut them every "interval" seconds.
+// ordinary work collects various verify(except the verify in block commit) into a pool and cut them every "interval" Microsecond.
 var (
 	ordiWorker   = verifyOrdiWorker{}
 )
@@ -35,6 +35,9 @@ type verifyOrdiWorker struct {
 
 	rpcRequests  []*pb.BatchRequest_SignVerRequest
 	batchSize int
+
+	// rpc call EndorserVerify failed. batchId: 1763. ReqCount: 17837. err: rpc error: code = ResourceExhausted desc = grpc: received message larger than max (4262852 vs. 4194304)
+	// log: Exiting due to the failed rpc request: batch_id:1763 batch_type:1 req_count:17837
 	interval time.Duration // milliseconds
 
 	gossipCount int // todo to be deleted. it's only for investigation purpose.
@@ -48,7 +51,7 @@ func (w *verifyOrdiWorker) start() {
 func (w *verifyOrdiWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.ordiVerify")
 	w.m = sync.Mutex{}
-	w.batchSize = 5000
+	w.batchSize = 1500
 	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
 	if err != nil {
 		w.logger.Fatalf("FPGA_BATCH_GEN_INTERVAL(%s)(ms) is not set correctly!, not the batch_gen_interval is set to default as 50 ms",
@@ -79,11 +82,11 @@ func (w *verifyOrdiWorker) work() {
 		}
 	}()
 
-	// invoke the rpc every interval milliseconds
+	// invoke the rpc every interval Microsecond
 	go func() {
 		var batchId uint64 = 0
 		for true {
-			time.Sleep( w.interval * time.Millisecond)
+			time.Sleep( w.interval * time.Microsecond)
 
 			w.m.Lock()
 			w.logger.Debugf("enter lock for w.rpcRequests = nil")
