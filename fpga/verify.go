@@ -76,9 +76,6 @@ func (w *verifyWorker) work() {
 			w.m.Lock()
 			w.logger.Debugf("enter w.syncBatchIdResp[batchId] = task.out")
 			w.syncBatchIdResp[batchId] = task.out
-			for k, v := range w.syncBatchIdResp {
-				w.logger.Errorf("w.syncBatchIdResp[%v]: %v", k, v)
-			}
 			w.m.Unlock()
 			w.logger.Debugf("exit w.syncBatchIdResp[batchId] = task.out")
 
