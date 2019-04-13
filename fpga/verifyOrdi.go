@@ -33,8 +33,10 @@ type verifyOrdiWorker struct {
 	logger			*flogging.FabricLogger
 	taskCh          chan *verifyOrdiTask
 
-	rcLock     sync.Mutex
+	rcLock     *sync.RWMutex
 	cResultChs map[int] chan<-*pb.BatchReply_SignVerReply // TODO maybe we need to change another container for storing the resp ch.
+
+	reqLock *sync.RWMutex
 	cRequests  *list.List
 
 	// rpc call EndorserVerify failed. batchId: 1763. ReqCount: 17837. err: rpc error: code = ResourceExhausted desc = grpc: received message larger than max (4262852 vs. 4194304)
@@ -53,7 +55,6 @@ func (w *verifyOrdiWorker) start() {
 func (w *verifyOrdiWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.ordiVerify")
 	w.batchSize = 10000
-	w.cRequests = list.New()
 
 	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
 	if err != nil {
@@ -62,10 +63,14 @@ func (w *verifyOrdiWorker) init() {
 	}
 	w.interval = time.Duration(tmp)
 
-	w.rcLock = sync.Mutex{}
+	w.taskCh = make(chan *verifyOrdiTask)
+
+	w.rcLock = &sync.RWMutex{}
 	w.cResultChs = make(map[int] chan<-*pb.BatchReply_SignVerReply)
 
-	w.taskCh = make(chan *verifyOrdiTask)
+	w.reqLock = &sync.RWMutex{}
+	w.cRequests = list.New()
+
 }
 
 func (w *verifyOrdiWorker) work() {
@@ -74,13 +79,16 @@ func (w *verifyOrdiWorker) work() {
 	// collect tasks
 	go func() {
 		for task := range w.taskCh {
-			w.rcLock.Lock()
-			w.logger.Debugf("enter lock w.cRequests = append(w.cRequests, task.in)")
+
+			w.reqLock.Lock()
 			w.cRequests.PushBack(task.in)
 			reqId := w.cRequests.Len() - 1
+			w.reqLock.Unlock()
+
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)
+
+			w.rcLock.Lock()
 			w.cResultChs[reqId] = task.out
-			w.logger.Debugf("exit lock w.cRequests = append(w.cRequests, task.in)")
 			w.rcLock.Unlock()
 		}
 	}()
@@ -91,26 +99,35 @@ func (w *verifyOrdiWorker) work() {
 		for true {
 			time.Sleep( w.interval * time.Microsecond)
 
-			w.rcLock.Lock()
-			w.logger.Debugf("enter lock for w.cRequests = nil")
-			if w.cRequests.Len() > 0 {
-				size := w.cRequests.Len()
+			w.reqLock.RLock()
+			size := w.cRequests.Len() // pending requests amount
+			w.rcLock.RUnlock()
+
+			if size > 0 {
 				if size > w.batchSize {
 					size = w.batchSize
 				}
+
 				var svReqs []*pb.BatchRequest_SignVerRequest
 				for i := 0; i < size; i++ {
+
+					w.reqLock.Lock()
 					element := w.cRequests.Front()
 					w.cRequests.Remove(element)
+					w.reqLock.Unlock()
+
 					req := element.Value.(*pb.BatchRequest_SignVerRequest)
 					if req == nil {
 						w.logger.Fatalf("why req: = element.Value.(*pb.BatchRequest_SignVerRequest) failed?!!")
 					}
 					svReqs = append(svReqs, req)
 				}
+
+				w.reqLock.RLock()
 				if w.cRequests.Len() > w.batchSize {
 					w.logger.Warningf("current w.cRequests.Len is %d, which is bigger than the batch size(%d)", w.cRequests.Len(), w.batchSize)
 				}
+				w.reqLock.RUnlock()
 
 				in := &pb.BatchRequest{SvRequests:svReqs}
 				out := make(chan *pb.BatchReply)
@@ -124,8 +141,6 @@ func (w *verifyOrdiWorker) work() {
 					//atomic.StoreInt32(&w.gossipCount, 0)
 				}
 			}
-			w.logger.Debugf("exit lock for w.cRequests = nil")
-			w.rcLock.Unlock()
 			batchId++
 		}
 	}()
@@ -136,11 +151,14 @@ func (w *verifyOrdiWorker) parseResponse(response *pb.BatchReply) {
 	verifyResults := response.SvReplies
 	for _, result := range verifyResults {
 		reqId, err := strconv.Atoi(result.ReqId)
+
+		w.rcLock.RLock()
 		if err != nil || w.cResultChs[reqId] == nil {
 			w.logger.Fatalf("[verifyOrdiWorker] the request id(%s) in the rpc reply is not stored before.", result)
 		}
 
 		w.cResultChs[reqId] <- result
+		w.rcLock.RUnlock()
 	}
 }
 
@@ -157,7 +175,7 @@ func EndorserVerify(in *pb.BatchRequest_SignVerRequest) bool {
 	ch := make(chan *pb.BatchReply_SignVerReply)
 	ordiWorker.putToTaskCh(&verifyOrdiTask{in, ch})
 	r := <-ch
-	logger.Debugf("EndorserVerify finished invoking verify rpc. result: %v", r)
+
 	if !r.Verified {
 		r := &big.Int{}
 		r.SetBytes(in.SignR)
