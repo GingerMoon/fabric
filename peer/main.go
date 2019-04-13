@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package main
 
 import (
-	"fmt"
+	"flag"
 	"log"
 	_ "net/http/pprof"
 	"os"
@@ -30,13 +30,16 @@ var mainCmd = &cobra.Command{
 	Use: "peer"}
 
 func main() {
-	f, err := os.Create("peer.pprof")
-	if err != nil {
-		log.Fatal(err)
+	cpuprofile := "peer.prof"
+	flag.Parse()
+	if cpuprofile != "" {
+		f, err := os.Create(cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
-	fmt.Println("starting pprof...")
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
 
 	// For environment variables.
 	viper.SetEnvPrefix(common.CmdRoot)
