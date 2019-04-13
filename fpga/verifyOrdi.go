@@ -78,11 +78,11 @@ func (w *verifyOrdiWorker) work() {
 
 	// collect tasks
 	go func() {
+		reqId := 0
 		for task := range w.taskCh {
 
 			w.reqLock.Lock()
 			w.cRequests.PushBack(task.in)
-			reqId := w.cRequests.Len() - 1
 			w.reqLock.Unlock()
 
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)

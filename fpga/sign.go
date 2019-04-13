@@ -74,10 +74,10 @@ func (w *endorserSignWorker) work() {
 
 	//collect tasks
 	go func() {
+		reqId := 0
 		for task := range w.taskCh {
 			w.reqLock.Lock()
 			w.cRequests.PushBack(task.in)
-			reqId := w.cRequests.Len() - 1
 			w.reqLock.Unlock()
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)
 
@@ -160,7 +160,7 @@ func (w *endorserSignWorker) work() {
 
 					// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
 					//  so it doen't make sense to new a go routine here.
-					w.parseResponse(response)
+					go w.parseResponse(response)
 				}
 			}
 

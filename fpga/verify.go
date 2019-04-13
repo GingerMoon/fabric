@@ -137,7 +137,7 @@ func (w *verifyWorker) work() {
 			cancel()
 			// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
 			//  so it doen't make sense to new a go routine here.
-			w.parseResponse(response)
+			go w.parseResponse(response)
 			batchId++
 		}
 	}()
