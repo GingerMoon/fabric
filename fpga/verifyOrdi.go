@@ -9,11 +9,8 @@ import (
 	pb "github.com/hyperledger/fabric/protos/fpga"
 	"math/big"
 	"os"
-	"runtime/debug"
 	"strconv"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -45,7 +42,7 @@ type verifyOrdiWorker struct {
 	interval time.Duration // milliseconds
 	batchSize     int
 
-	gossipCount int32 // todo to be deleted. it's only for investigation purpose.
+	//gossipCount int32 // todo to be deleted. it's only for investigation purpose.
 }
 
 func (w *verifyOrdiWorker) start() {
@@ -122,9 +119,9 @@ func (w *verifyOrdiWorker) work() {
 
 				// parse rpc response
 				for response := range out {
-					w.logger.Debugf("total verify rpc requests: %d. gossip: %d.", w.cRequests.Len(), atomic.LoadInt32(&w.gossipCount))
 					w.parseResponse(response)
-					atomic.StoreInt32(&w.gossipCount, 0)
+					//w.logger.Debugf("total verify rpc requests: %d. gossip: %d.", w.cRequests.Len(), atomic.LoadInt32(&w.gossipCount))
+					//atomic.StoreInt32(&w.gossipCount, 0)
 				}
 			}
 			w.logger.Debugf("exit lock for w.cRequests = nil")
@@ -152,9 +149,9 @@ func (w *verifyOrdiWorker) putToTaskCh(task *verifyOrdiTask){
 }
 
 func EndorserVerify(in *pb.BatchRequest_SignVerRequest) bool {
-	if strings.Contains(string(debug.Stack()), "gossip") {
-		atomic.AddInt32(&ordiWorker.gossipCount, 1)
-	}
+	//if strings.Contains(string(debug.Stack()), "gossip") {
+	//	atomic.AddInt32(&ordiWorker.gossipCount, 1)
+	//}
 
 	logger.Debugf("EndorserVerify is invoking verify rpc...")
 	ch := make(chan *pb.BatchReply_SignVerReply)
