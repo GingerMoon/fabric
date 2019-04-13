@@ -166,10 +166,9 @@ func (w *verifyWorker) pushFront(task *verifyRpcTask) {
 	//}
 
 	w.m.Lock()
-	w.logger.Debugf("enter pushFront")
-	defer w.m.Unlock()
-	defer w.logger.Debugf("exit pushFront")
 	w.syncTaskPool.PushFront(task)
+	w.m.Unlock()
+
 	w.c.Signal()
 }
 
