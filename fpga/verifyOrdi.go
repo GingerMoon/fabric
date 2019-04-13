@@ -41,7 +41,7 @@ type verifyOrdiWorker struct {
 
 	// rpc call EndorserVerify failed. batchId: 1763. ReqCount: 17837. err: rpc error: code = ResourceExhausted desc = grpc: received message larger than max (4262852 vs. 4194304)
 	// log: Exiting due to the failed rpc request: batch_id:1763 batch_type:1 req_count:17837
-	interval time.Duration // milliseconds
+	interval time.Duration
 	batchSize     int
 
 	//gossipCount int32 // todo to be deleted. it's only for investigation purpose.
@@ -101,7 +101,7 @@ func (w *verifyOrdiWorker) work() {
 
 			w.reqLock.RLock()
 			size := w.cRequests.Len() // pending requests amount
-			w.rcLock.RUnlock()
+			w.reqLock.RUnlock()
 
 			if size > 0 {
 				if size > w.batchSize {
