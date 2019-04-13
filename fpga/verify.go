@@ -180,9 +180,8 @@ func (w *verifyWorker) pushBack(task *verifyRpcTask) {
 	//}
 
 	w.m.Lock()
-	w.logger.Debugf("enter pushBack")
-	defer w.m.Unlock()
-	defer w.logger.Debugf("exit pushBack")
 	w.syncTaskPool.PushBack(task)
+	w.m.Unlock()
+
 	w.c.Signal()
 }
