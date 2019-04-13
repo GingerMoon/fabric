@@ -35,9 +35,9 @@ type verifyOrdiWorker struct {
 	logger			*flogging.FabricLogger
 	taskCh          chan *verifyOrdiTask
 
-	m            sync.Mutex
-	cResultChMap map[int] chan<-*pb.BatchReply_SignVerReply // TODO maybe we need to change another container for storing the resp ch.
-	cSvReqList   *list.List
+	rcLock     sync.Mutex
+	cResultChs map[int] chan<-*pb.BatchReply_SignVerReply // TODO maybe we need to change another container for storing the resp ch.
+	cRequests  *list.List
 
 	// rpc call EndorserVerify failed. batchId: 1763. ReqCount: 17837. err: rpc error: code = ResourceExhausted desc = grpc: received message larger than max (4262852 vs. 4194304)
 	// log: Exiting due to the failed rpc request: batch_id:1763 batch_type:1 req_count:17837
@@ -54,9 +54,9 @@ func (w *verifyOrdiWorker) start() {
 
 func (w *verifyOrdiWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.ordiVerify")
-	w.m = sync.Mutex{}
+	w.rcLock = sync.Mutex{}
 	w.batchSize = 10000
-	w.cSvReqList = list.New()
+	w.cRequests = list.New()
 
 	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
 	if err != nil {
@@ -65,7 +65,7 @@ func (w *verifyOrdiWorker) init() {
 	}
 	w.interval = time.Duration(tmp)
 
-	w.cResultChMap = make(map[int] chan<-*pb.BatchReply_SignVerReply)
+	w.cResultChs = make(map[int] chan<-*pb.BatchReply_SignVerReply)
 
 	w.taskCh = make(chan *verifyOrdiTask)
 }
@@ -76,14 +76,14 @@ func (w *verifyOrdiWorker) work() {
 	// collect tasks
 	go func() {
 		for task := range w.taskCh {
-			w.m.Lock()
-			w.logger.Debugf("enter lock w.cSvReqList = append(w.cSvReqList, task.in)")
-			w.cSvReqList.PushBack(task.in)
-			reqId := w.cSvReqList.Len() - 1
+			w.rcLock.Lock()
+			w.logger.Debugf("enter lock w.cRequests = append(w.cRequests, task.in)")
+			w.cRequests.PushBack(task.in)
+			reqId := w.cRequests.Len() - 1
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)
-			w.cResultChMap[reqId] = task.out
-			w.logger.Debugf("exit lock w.cSvReqList = append(w.cSvReqList, task.in)")
-			w.m.Unlock()
+			w.cResultChs[reqId] = task.out
+			w.logger.Debugf("exit lock w.cRequests = append(w.cRequests, task.in)")
+			w.rcLock.Unlock()
 		}
 	}()
 
@@ -93,25 +93,25 @@ func (w *verifyOrdiWorker) work() {
 		for true {
 			time.Sleep( w.interval * time.Microsecond)
 
-			w.m.Lock()
-			w.logger.Debugf("enter lock for w.cSvReqList = nil")
-			if w.cSvReqList.Len() > 0 {
-				size := w.cSvReqList.Len()
+			w.rcLock.Lock()
+			w.logger.Debugf("enter lock for w.cRequests = nil")
+			if w.cRequests.Len() > 0 {
+				size := w.cRequests.Len()
 				if size > w.batchSize {
 					size = w.batchSize
 				}
 				var svReqs []*pb.BatchRequest_SignVerRequest
 				for i := 0; i < size; i++ {
-					element := w.cSvReqList.Front()
-					w.cSvReqList.Remove(element)
+					element := w.cRequests.Front()
+					w.cRequests.Remove(element)
 					req := element.Value.(*pb.BatchRequest_SignVerRequest)
 					if req == nil {
 						w.logger.Fatalf("why req: = element.Value.(*pb.BatchRequest_SignVerRequest) failed?!!")
 					}
 					svReqs = append(svReqs, req)
 				}
-				if w.cSvReqList.Len() > w.batchSize {
-					w.logger.Warningf("current w.cSvReqList.Len is %d, which is bigger than the batch size(%d)", w.cSvReqList.Len(), w.batchSize)
+				if w.cRequests.Len() > w.batchSize {
+					w.logger.Warningf("current w.cRequests.Len is %d, which is bigger than the batch size(%d)", w.cRequests.Len(), w.batchSize)
 				}
 
 				in := &pb.BatchRequest{SvRequests:svReqs}
@@ -121,13 +121,13 @@ func (w *verifyOrdiWorker) work() {
 
 				// parse rpc response
 				for response := range out {
-					w.logger.Debugf("total verify rpc requests: %d. gossip: %d.", w.cSvReqList.Len(), w.gossipCount)
+					w.logger.Debugf("total verify rpc requests: %d. gossip: %d.", w.cRequests.Len(), w.gossipCount)
 					w.parseResponse(response)
 					w.gossipCount = 0
 				}
 			}
-			w.logger.Debugf("exit lock for w.cSvReqList = nil")
-			w.m.Unlock()
+			w.logger.Debugf("exit lock for w.cRequests = nil")
+			w.rcLock.Unlock()
 			batchId++
 		}
 	}()
@@ -138,11 +138,11 @@ func (w *verifyOrdiWorker) parseResponse(response *pb.BatchReply) {
 	verifyResults := response.SvReplies
 	for _, result := range verifyResults {
 		reqId, err := strconv.Atoi(result.ReqId)
-		if err != nil || w.cResultChMap[reqId] == nil {
+		if err != nil || w.cResultChs[reqId] == nil {
 			w.logger.Fatalf("[verifyOrdiWorker] the request id(%s) in the rpc reply is not stored before.", result)
 		}
 
-		w.cResultChMap[reqId] <- result
+		w.cResultChs[reqId] <- result
 	}
 }
 
