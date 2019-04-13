@@ -31,6 +31,7 @@ type endorserSignWorker struct {
 	client pb.BatchRPCClient
 	taskCh chan *endorserSignRpcTask
 
+	rcLock *sync.RWMutex
 	cResultChs map[int] chan<-*pb.BatchReply_SignGenReply
 
 	reqsLock *sync.Mutex
@@ -78,7 +79,10 @@ func (w *endorserSignWorker) work() {
 			reqId := w.requests.Len() - 1
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)
 			w.reqsLock.Unlock()
+
+			w.rcLock.Lock()
 			w.cResultChs[reqId] = task.out
+			w.rcLock.Unlock()
 		}
 	}()
 
@@ -127,14 +131,12 @@ func (w *endorserSignWorker) work() {
 					w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
 					//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
-					// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-					// attention! the results of rpcRequests and cResultChs might be not correct.
-					// because they might be modified in another go routine.
-					// we don't use lock to avoid the possible deadlock which is an unnecessary risk.
+					w.rcLock.RLock()
 					w.logger.Errorf("pending w.requests.Len is %d", w.requests.Len())
 					for k, v := range w.cResultChs {
 						w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
 					}
+					w.rcLock.RUnlock()
 
 					w.logger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
 				} else {
@@ -160,6 +162,8 @@ func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 	signatures := response.SgReplies
 	for _, sig := range signatures {
 		reqId, err := strconv.Atoi(sig.ReqId)
+
+		w.rcLock.Lock()
 		if err != nil || w.cResultChs[reqId] == nil {
 			for k, v := range w.cResultChs {
 				w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
@@ -170,7 +174,7 @@ func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 		w.cResultChs[reqId] <- sig
 		close(w.cResultChs[reqId])
 		delete(w.cResultChs, reqId)
-
+		w.rcLock.Unlock()
 	}
 }
 
