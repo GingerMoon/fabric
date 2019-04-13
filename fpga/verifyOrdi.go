@@ -136,7 +136,7 @@ func (w *verifyOrdiWorker) work() {
 
 				// parse rpc response
 				for response := range out {
-					w.parseResponse(response)
+					go w.parseResponse(response)
 					//w.logger.Debugf("total verify rpc cRequests: %d. gossip: %d.", w.cRequests.Len(), atomic.LoadInt32(&w.gossipCount))
 					//atomic.StoreInt32(&w.gossipCount, 0)
 				}
