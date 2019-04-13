@@ -30,8 +30,8 @@ type verifyWorker struct {
 	m               *sync.Mutex
 	syncBatchIdResp map[uint64] chan<-*pb.BatchReply
 
-	c               *sync.Cond
-	syncTaskPool    *list.List
+	c         *sync.Cond
+	cTaskPool *list.List
 
 	//gossipCount int32 // todo to be deleted. it's only for investigation purpose.
 }
@@ -50,7 +50,7 @@ func (w *verifyWorker) init() {
 	w.syncBatchIdResp = make(map[uint64] chan<-*pb.BatchReply)
 
 	w.c = sync.NewCond(&sync.Mutex{})
-	w.syncTaskPool = list.New()
+	w.cTaskPool = list.New()
 
 }
 
@@ -63,18 +63,18 @@ func (w *verifyWorker) work() {
 			// get task from pool and store [batchId, channel] in syncBatchIdResp
 			var task *verifyRpcTask
 			w.c.L.Lock()
-			w.logger.Debugf("enter element := w.syncTaskPool.Front()")
-			for w.syncTaskPool.Len() == 0 {
+			w.logger.Debugf("enter element := w.cTaskPool.Front()")
+			for w.cTaskPool.Len() == 0 {
 				w.c.Wait()
 			}
-			w.logger.Debugf("awaik at w.syncTaskPool.Len() == 0")
-			element := w.syncTaskPool.Front()
-			w.syncTaskPool.Remove(element)
+			w.logger.Debugf("awaik at w.cTaskPool.Len() == 0")
+			element := w.cTaskPool.Front()
+			w.cTaskPool.Remove(element)
 			task = element.Value.(*verifyRpcTask)
 			if task == nil {
 				w.logger.Fatalf("w.taskCh.Front().Value.(*pb.verifyRpcTask) is expected!")
 			}
-			w.logger.Debugf("exit element := w.syncTaskPool.Front()")
+			w.logger.Debugf("exit element := w.cTaskPool.Front()")
 			w.c.L.Unlock()
 
 			w.m.Lock()
@@ -112,17 +112,17 @@ func (w *verifyWorker) work() {
 				//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
 				// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-				// attention! the results of syncTaskPool and syncBatchIdResp might be not correct.
+				// attention! the results of cTaskPool and syncBatchIdResp might be not correct.
 				// because they might be modified in another go routine.
 				// we don't use lock to avoid the possible deadlock which is an unnecessary risk.
-				for i := 0; i < w.syncTaskPool.Len(); i++ {
-					element := w.syncTaskPool.Front()
-					w.syncTaskPool.Remove(element)
+				for i := 0; i < w.cTaskPool.Len(); i++ {
+					element := w.cTaskPool.Front()
+					w.cTaskPool.Remove(element)
 					task = element.Value.(*verifyRpcTask)
 					w.logger.Errorf("pending request: %v",  task)
 				}
 				for k, v := range w.syncBatchIdResp {
-					w.logger.Errorf("w.rpcResultMap[%v]: %v", k, v)
+					w.logger.Errorf("w.cRpcResultChMap[%v]: %v", k, v)
 				}
 
 				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
@@ -166,7 +166,7 @@ func (w *verifyWorker) pushFront(task *verifyRpcTask) {
 	//}
 
 	w.c.L.Lock()
-	w.syncTaskPool.PushFront(task)
+	w.cTaskPool.PushFront(task)
 	w.c.Signal()
 	w.c.L.Unlock()
 
@@ -180,7 +180,7 @@ func (w *verifyWorker) pushBack(task *verifyRpcTask) {
 	//}
 
 	w.c.L.Lock()
-	w.syncTaskPool.PushBack(task)
+	w.cTaskPool.PushBack(task)
 	w.c.Signal()
 	w.c.L.Unlock()
 
