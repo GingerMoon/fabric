@@ -74,7 +74,7 @@ func (w *verifyOrdiWorker) init() {
 }
 
 func (w *verifyOrdiWorker) work() {
-	w.logger.Infof("ordinary verify requests collector starts to work.")
+	w.logger.Infof("ordinary verify cRequests collector starts to work.")
 
 	// collect tasks
 	go func() {
@@ -100,7 +100,7 @@ func (w *verifyOrdiWorker) work() {
 			time.Sleep( w.interval * time.Microsecond)
 
 			w.reqLock.RLock()
-			size := w.cRequests.Len() // pending requests amount
+			size := w.cRequests.Len() // pending cRequests amount
 			w.reqLock.RUnlock()
 
 			if size > 0 {
@@ -137,7 +137,7 @@ func (w *verifyOrdiWorker) work() {
 				// parse rpc response
 				for response := range out {
 					w.parseResponse(response)
-					//w.logger.Debugf("total verify rpc requests: %d. gossip: %d.", w.cRequests.Len(), atomic.LoadInt32(&w.gossipCount))
+					//w.logger.Debugf("total verify rpc cRequests: %d. gossip: %d.", w.cRequests.Len(), atomic.LoadInt32(&w.gossipCount))
 					//atomic.StoreInt32(&w.gossipCount, 0)
 				}
 			}

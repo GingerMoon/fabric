@@ -27,7 +27,7 @@ type verifyWorker struct {
 	logger			*flogging.FabricLogger
 	client      	pb.BatchRPCClient
 
-	rcLock     *sync.Mutex
+	rcLock     *sync.RWMutex
 	cResultChs map[uint64] chan<-*pb.BatchReply
 
 	cdTasksLock *sync.Cond
@@ -46,7 +46,7 @@ func (w *verifyWorker) init() {
 
 	w.client = pb.NewBatchRPCClient(conn)
 
-	w.rcLock = &sync.Mutex{}
+	w.rcLock = &sync.RWMutex{}
 	w.cResultChs = make(map[uint64] chan<-*pb.BatchReply)
 
 	w.cdTasksLock = sync.NewCond(&sync.Mutex{})
@@ -62,26 +62,23 @@ func (w *verifyWorker) work() {
 		for true {
 			// get task from pool and store [batchId, channel] in cResultChs
 			var task *verifyRpcTask
+
 			w.cdTasksLock.L.Lock()
-			w.logger.Debugf("enter element := w.cTasks.Front()")
 			for w.cTasks.Len() == 0 {
 				w.cdTasksLock.Wait()
 			}
-			w.logger.Debugf("awaik at w.cTasks.Len() == 0")
 			element := w.cTasks.Front()
 			w.cTasks.Remove(element)
+			w.cdTasksLock.L.Unlock()
+
 			task = element.Value.(*verifyRpcTask)
 			if task == nil {
 				w.logger.Fatalf("w.taskCh.Front().Value.(*pb.verifyRpcTask) is expected!")
 			}
-			w.logger.Debugf("exit element := w.cTasks.Front()")
-			w.cdTasksLock.L.Unlock()
 
 			w.rcLock.Lock()
-			w.logger.Debugf("enter w.cResultChs[batchId] = task.out")
 			w.cResultChs[batchId] = task.out
 			w.rcLock.Unlock()
-			w.logger.Debugf("exit w.cResultChs[batchId] = task.out")
 
 			// prepare rpc parameter
 			task.in.BatchId = batchId
@@ -95,6 +92,8 @@ func (w *verifyWorker) work() {
 			w.logger.Debugf("rpc request: %v", *task.in)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			response, err := w.client.Verify(ctx, task.in)
+
+			// rpc failed, print the state information.
 			if err != nil {
 				var size uintptr = 0
 				for _, req := range task.in.SvRequests {
@@ -111,30 +110,32 @@ func (w *verifyWorker) work() {
 				w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, task.in)
 				//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
-				// Attention!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-				// attention! the results of cTasks and cResultChs might be not correct.
-				// because they might be modified in another go routine.
-				// we don't use lock to avoid the possible deadlock which is an unnecessary risk.
-				for i := 0; i < w.cTasks.Len(); i++ {
+				w.cdTasksLock.L.Lock()
+				pdAmount := w.cTasks.Len() // pending tasks amount
+				for i := 0; i < pdAmount; i++ {
 					element := w.cTasks.Front()
 					w.cTasks.Remove(element)
 					task = element.Value.(*verifyRpcTask)
 					w.logger.Errorf("pending request: %v",  task)
 				}
+				w.cdTasksLock.L.Unlock()
+
+				w.rcLock.RLock()
 				for k, v := range w.cResultChs {
 					w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
 				}
+				w.rcLock.RUnlock()
 
 				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
 			}
 			w.logger.Debugf("rpc response: %v", *response)
 
 			// gossip
-			//w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(task.in.SvRequests), atomic.LoadInt32(&w.gossipCount))
+			//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(task.in.SvRequests), atomic.LoadInt32(&w.gossipCount))
 			//atomic.StoreInt32(&w.gossipCount, 0)
 
 			cancel()
-			w.parseResponse(response) // TODO this need to be changed to: go e.parseResponse(response)
+			go w.parseResponse(response)
 			batchId++
 		}
 	}()
@@ -142,10 +143,6 @@ func (w *verifyWorker) work() {
 
 func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
 	w.rcLock.Lock()
-	defer w.rcLock.Unlock()
-	defer w.logger.Debugf("exit lock parseResponse")
-	w.logger.Debugf("enter lock parseResponse")
-	
 	if w.cResultChs[response.BatchId] == nil {
 		for k, v := range w.cResultChs {
 			w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
@@ -155,6 +152,7 @@ func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
 	w.cResultChs[response.BatchId] <- response
 	close(w.cResultChs[response.BatchId])
 	delete(w.cResultChs, response.BatchId)
+	w.rcLock.Unlock()
 
 }
 

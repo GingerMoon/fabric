@@ -31,11 +31,11 @@ type endorserSignWorker struct {
 	client pb.BatchRPCClient
 	taskCh chan *endorserSignRpcTask
 
-	rcLock *sync.RWMutex
+	rcLock *sync.RWMutex // result-channelReturn
 	cResultChs map[int] chan<-*pb.BatchReply_SignGenReply
 
-	reqsLock *sync.Mutex
-	requests *list.List
+	reqLock   *sync.RWMutex
+	cRequests *list.List
 
 	batchSize int
 	interval time.Duration // milliseconds
@@ -55,8 +55,8 @@ func (w *endorserSignWorker) init() {
 	w.rcLock = &sync.RWMutex{}
 	w.cResultChs = make(map[int] chan<-*pb.BatchReply_SignGenReply)
 
-	w.reqsLock = &sync.Mutex{}
-	w.requests = list.New()
+	w.reqLock = &sync.RWMutex{}
+	w.cRequests = list.New()
 
 	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
 	if err != nil {
@@ -75,11 +75,11 @@ func (w *endorserSignWorker) work() {
 	//collect tasks
 	go func() {
 		for task := range w.taskCh {
-			w.reqsLock.Lock()
-			w.requests.PushBack(task.in)
-			reqId := w.requests.Len() - 1
+			w.reqLock.Lock()
+			w.cRequests.PushBack(task.in)
+			reqId := w.cRequests.Len() - 1
+			w.reqLock.Unlock()
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)
-			w.reqsLock.Unlock()
 
 			w.rcLock.Lock()
 			w.cResultChs[reqId] = task.out
@@ -94,30 +94,41 @@ func (w *endorserSignWorker) work() {
 			time.Sleep( w.interval * time.Microsecond)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
-			// rpc
-			w.reqsLock.Lock()
-			if w.requests.Len() > 0 {
-				size := w.requests.Len()
+			w.reqLock.RLock()
+			size := w.cRequests.Len() // pending cRequests amount
+			w.reqLock.RUnlock()
+
+			if size > 0 {
 				if size > w.batchSize {
 					size = w.batchSize
 				}
+
 				var sgReqs []*pb.BatchRequest_SignGenRequest
 				for i := 0; i < size; i++ {
-					element := w.requests.Front()
-					w.requests.Remove(element)
+
+					w.reqLock.Lock()
+					element := w.cRequests.Front()
+					w.cRequests.Remove(element)
+					w.reqLock.Unlock()
+
 					req := element.Value.(*pb.BatchRequest_SignGenRequest)
 					if req == nil {
 						w.logger.Fatalf("why req: = element.Value.(*pb.BatchRequest_SignGenRequest) failed?!!")
 					}
 					sgReqs = append(sgReqs, req)
 				}
-				if w.requests.Len() > w.batchSize {
-					w.logger.Warningf("current w.requests.Len is %d, which is bigger than the batch size(%d)", w.requests.Len(), w.batchSize)
+
+				w.reqLock.RLock()
+				if w.cRequests.Len() > w.batchSize {
+					w.logger.Warningf("current w.cRequests.Len is %d, which is bigger than the batch size(%d)", w.cRequests.Len(), w.batchSize)
 				}
+				w.reqLock.RUnlock()
 
 				request := &pb.BatchRequest{SgRequests:sgReqs, BatchType:0, BatchId: batchId, ReqCount:uint32(len(sgReqs))}
 				w.logger.Debugf("rpc request: %v", *request)
 				response, err := w.client.Sign(ctx, request)
+
+				// rpc failed. print the state information.
 				if err != nil {
 					var size uintptr = 0
 					for _, req := range request.SgRequests {
@@ -132,25 +143,24 @@ func (w *endorserSignWorker) work() {
 					w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
 					//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
-					w.rcLock.RLock()
-					w.logger.Errorf("pending w.requests.Len is %d", w.requests.Len())
+					w.reqLock.RLock()
+					w.logger.Errorf("pending w.cRequests.Len is %d", w.cRequests.Len())
 					for k, v := range w.cResultChs {
 						w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
 					}
-					w.rcLock.RUnlock()
+					w.reqLock.RUnlock()
 
 					w.logger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
 				} else {
 					w.logger.Debugf("rpc response: %v", *response)
 
 					// gossip
-					//w.logger.Debugf("total sign rpc requests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
+					//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
 					//atomic.StoreInt32(&w.gossipCount, 0)
 
-					w.parseResponse(response) // TODO this need to be changed to: go e.parseResponse(response)
+					go w.parseResponse(response)
 				}
 			}
-			w.reqsLock.Unlock()
 
 			cancel()
 			batchId++
