@@ -50,8 +50,12 @@ func (w *endorserSignWorker) start() {
 
 func (w *endorserSignWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.sign")
-	w.reqsLock = &sync.Mutex{}
 	w.batchSize = 10000
+
+	w.rcLock = &sync.RWMutex{}
+	w.cResultChs = make(map[int] chan<-*pb.BatchReply_SignGenReply)
+
+	w.reqsLock = &sync.Mutex{}
 	w.requests = list.New()
 
 	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
@@ -61,11 +65,8 @@ func (w *endorserSignWorker) init() {
 	}
 	w.interval = time.Duration(tmp)
 
-	w.cResultChs = make(map[int] chan<-*pb.BatchReply_SignGenReply)
-
 	w.client = pb.NewBatchRPCClient(conn)
 	w.taskCh = make(chan *endorserSignRpcTask, w.batchSize)
-
 }
 
 func (w *endorserSignWorker) work() {
