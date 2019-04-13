@@ -158,7 +158,9 @@ func (w *endorserSignWorker) work() {
 					//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
 					//atomic.StoreInt32(&w.gossipCount, 0)
 
-					go w.parseResponse(response)
+					// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
+					//  so it doen't make sense to new a go routine here.
+					w.parseResponse(response)
 				}
 			}
 
@@ -179,7 +181,7 @@ func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 			for k, v := range w.cResultChs {
 				w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
 			}
-			w.logger.Fatalf("[endorserSignWorker] the request id(%s) in the rpc reply is not stored before.", sig.ReqId)
+			w.logger.Fatalf("the request id(%s)-(%v) in the rpc reply is not stored before.", sig.ReqId, reqId)
 		}
 
 		w.cResultChs[reqId] <- sig
@@ -196,10 +198,8 @@ func EndorserSign(in *pb.BatchRequest_SignGenRequest) *pb.BatchReply_SignGenRepl
 	//	debug.PrintStack()
 	//}
 
-	signWorker.logger.Debugf("EndorserSign is invoking sign rpc...")
 	ch := make(chan *pb.BatchReply_SignGenReply)
 	signWorker.taskCh <- &endorserSignRpcTask{in, ch}
 	r := <-ch
-	signWorker.logger.Debugf("EndorserSign finished invoking sign rpc. result: %v", r)
 	return r
 }
