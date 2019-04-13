@@ -165,11 +165,11 @@ func (w *verifyWorker) pushFront(task *verifyRpcTask) {
 	//	debug.PrintStack()
 	//}
 
-	w.m.Lock()
+	w.c.L.Lock()
 	w.syncTaskPool.PushFront(task)
-	w.m.Unlock()
-
 	w.c.Signal()
+	w.c.L.Unlock()
+
 }
 
 func (w *verifyWorker) pushBack(task *verifyRpcTask) {
@@ -179,9 +179,9 @@ func (w *verifyWorker) pushBack(task *verifyRpcTask) {
 	//	debug.PrintStack()
 	//}
 
-	w.m.Lock()
+	w.c.L.Lock()
 	w.syncTaskPool.PushBack(task)
-	w.m.Unlock()
-
 	w.c.Signal()
+	w.c.L.Unlock()
+
 }
