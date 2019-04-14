@@ -1,11 +1,9 @@
 package fpga
 
 import (
-	"container/list"
 	"context"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
-	"sync"
 	"time"
 	"unsafe"
 )
@@ -27,11 +25,8 @@ type verifyWorker struct {
 	logger			*flogging.FabricLogger
 	client      	pb.BatchRPCClient
 
-	rcLock     *sync.RWMutex
+	taskCh chan *verifyRpcTask
 	cResultChs map[uint64] chan<-*pb.BatchReply
-
-	cdTasksLock *sync.Cond
-	cTasks      *list.List
 
 	//gossipCount int32 // todo to be deleted. it's only for investigation purpose.
 }
@@ -43,15 +38,9 @@ func (w *verifyWorker) start() {
 
 func (w *verifyWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.verify")
-
 	w.client = pb.NewBatchRPCClient(conn)
-
-	w.rcLock = &sync.RWMutex{}
+	w.taskCh = make(chan *verifyRpcTask)
 	w.cResultChs = make(map[uint64] chan<-*pb.BatchReply)
-
-	w.cdTasksLock = sync.NewCond(&sync.Mutex{})
-	w.cTasks = list.New()
-
 }
 
 func (w *verifyWorker) work() {
@@ -59,26 +48,8 @@ func (w *verifyWorker) work() {
 
 	go func() {
 		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
-		for true {
-			// get task from pool and store [batchId, channel] in cResultChs
-			var task *verifyRpcTask
-
-			w.cdTasksLock.L.Lock()
-			for w.cTasks.Len() == 0 {
-				w.cdTasksLock.Wait()
-			}
-			element := w.cTasks.Front()
-			w.cTasks.Remove(element)
-			w.cdTasksLock.L.Unlock()
-
-			task = element.Value.(*verifyRpcTask)
-			if task == nil {
-				w.logger.Fatalf("w.taskCh.Front().Value.(*pb.verifyRpcTask) is expected!")
-			}
-
-			w.rcLock.Lock()
+		for task := range w.taskCh {
 			w.cResultChs[batchId] = task.out
-			w.rcLock.Unlock()
 
 			// prepare rpc parameter
 			task.in.BatchId = batchId
@@ -95,6 +66,8 @@ func (w *verifyWorker) work() {
 
 			// rpc failed, print the state information.
 			if err != nil {
+				w.logger.Errorf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
+
 				var size uintptr = 0
 				for _, req := range task.in.SvRequests {
 					size += unsafe.Sizeof(req.SignR)
@@ -110,21 +83,9 @@ func (w *verifyWorker) work() {
 				w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, task.in)
 				//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
-				w.cdTasksLock.L.Lock()
-				pdAmount := w.cTasks.Len() // pending tasks amount
-				for i := 0; i < pdAmount; i++ {
-					element := w.cTasks.Front()
-					w.cTasks.Remove(element)
-					task = element.Value.(*verifyRpcTask)
-					w.logger.Errorf("pending request: %v",  task)
-				}
-				w.cdTasksLock.L.Unlock()
-
-				w.rcLock.RLock()
 				for k, v := range w.cResultChs {
 					w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
 				}
-				w.rcLock.RUnlock()
 
 				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
 			}
@@ -137,14 +98,13 @@ func (w *verifyWorker) work() {
 			cancel()
 			// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
 			//  so it doen't make sense to new a go routine here.
-			go w.parseResponse(response)
+			w.parseResponse(response)
 			batchId++
 		}
 	}()
 }
 
 func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
-	w.rcLock.Lock()
 	if w.cResultChs[response.BatchId] == nil {
 		for k, v := range w.cResultChs {
 			w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
@@ -154,8 +114,6 @@ func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
 	w.cResultChs[response.BatchId] <- response
 	close(w.cResultChs[response.BatchId])
 	delete(w.cResultChs, response.BatchId)
-	w.rcLock.Unlock()
-
 }
 
 func (w *verifyWorker) pushFront(task *verifyRpcTask) {
@@ -164,12 +122,7 @@ func (w *verifyWorker) pushFront(task *verifyRpcTask) {
 	//	atomic.AddInt32(&w.gossipCount, 1)
 	//	debug.PrintStack()
 	//}
-
-	w.cdTasksLock.L.Lock()
-	w.cTasks.PushFront(task)
-	w.cdTasksLock.Signal()
-	w.cdTasksLock.L.Unlock()
-
+	w.taskCh <- task
 }
 
 func (w *verifyWorker) pushBack(task *verifyRpcTask) {
@@ -178,10 +131,5 @@ func (w *verifyWorker) pushBack(task *verifyRpcTask) {
 	//	atomic.AddInt32(&w.gossipCount, 1)
 	//	debug.PrintStack()
 	//}
-
-	w.cdTasksLock.L.Lock()
-	w.cTasks.PushBack(task)
-	w.cdTasksLock.Signal()
-	w.cdTasksLock.L.Unlock()
-
+	w.taskCh <- task
 }

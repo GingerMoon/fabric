@@ -31,11 +31,12 @@ type endorserSignWorker struct {
 	client pb.BatchRPCClient
 	taskCh chan *endorserSignRpcTask
 
-	rcLock *sync.RWMutex // result-channelReturn
-	cResultChs map[int] chan<-*pb.BatchReply_SignGenReply
 
-	reqLock   *sync.RWMutex
+	reqLock   *sync.Mutex
 	cRequests *list.List
+
+	rcLock *sync.Mutex // result-channelReturn
+	cResultChs map[int] chan<-*pb.BatchReply_SignGenReply
 
 	batchSize int
 	interval time.Duration // milliseconds
@@ -52,10 +53,10 @@ func (w *endorserSignWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.sign")
 	w.batchSize = 10000
 
-	w.rcLock = &sync.RWMutex{}
+	w.rcLock = &sync.Mutex{}
 	w.cResultChs = make(map[int] chan<-*pb.BatchReply_SignGenReply)
 
-	w.reqLock = &sync.RWMutex{}
+	w.reqLock = &sync.Mutex{}
 	w.cRequests = list.New()
 
 	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
@@ -66,7 +67,7 @@ func (w *endorserSignWorker) init() {
 	w.interval = time.Duration(tmp)
 
 	w.client = pb.NewBatchRPCClient(conn)
-	w.taskCh = make(chan *endorserSignRpcTask, w.batchSize)
+	w.taskCh = make(chan *endorserSignRpcTask)
 }
 
 func (w *endorserSignWorker) work() {
@@ -74,16 +75,17 @@ func (w *endorserSignWorker) work() {
 
 	//collect tasks
 	go func() {
-		reqId := 0
+		reqId := 1 // starts from 1 instead of 0, because the driver cannot print 0.
 		for task := range w.taskCh {
 			w.reqLock.Lock()
 			w.cRequests.PushBack(task.in)
-			w.reqLock.Unlock()
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)
+			w.reqLock.Unlock()
 
 			w.rcLock.Lock()
 			w.cResultChs[reqId] = task.out
 			w.rcLock.Unlock()
+			reqId++
 		}
 	}()
 
@@ -92,12 +94,10 @@ func (w *endorserSignWorker) work() {
 		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
 		for true {
 			time.Sleep( w.interval * time.Microsecond)
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
-			w.reqLock.RLock()
+			w.reqLock.Lock()
+
 			size := w.cRequests.Len() // pending cRequests amount
-			w.reqLock.RUnlock()
-
 			if size > 0 {
 				if size > w.batchSize {
 					size = w.batchSize
@@ -106,10 +106,8 @@ func (w *endorserSignWorker) work() {
 				var sgReqs []*pb.BatchRequest_SignGenRequest
 				for i := 0; i < size; i++ {
 
-					w.reqLock.Lock()
 					element := w.cRequests.Front()
 					w.cRequests.Remove(element)
-					w.reqLock.Unlock()
 
 					req := element.Value.(*pb.BatchRequest_SignGenRequest)
 					if req == nil {
@@ -118,15 +116,14 @@ func (w *endorserSignWorker) work() {
 					sgReqs = append(sgReqs, req)
 				}
 
-				w.reqLock.RLock()
 				if w.cRequests.Len() > w.batchSize {
 					w.logger.Warningf("current w.cRequests.Len is %d, which is bigger than the batch size(%d)", w.cRequests.Len(), w.batchSize)
 				}
-				w.reqLock.RUnlock()
 
 				request := &pb.BatchRequest{SgRequests:sgReqs, BatchType:0, BatchId: batchId, ReqCount:uint32(len(sgReqs))}
-				w.logger.Debugf("rpc request: %v", *request)
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				response, err := w.client.Sign(ctx, request)
+				cancel()
 
 				// rpc failed. print the state information.
 				if err != nil {
@@ -143,12 +140,10 @@ func (w *endorserSignWorker) work() {
 					w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
 					//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
-					w.reqLock.RLock()
 					w.logger.Errorf("pending w.cRequests.Len is %d", w.cRequests.Len())
 					for k, v := range w.cResultChs {
 						w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
 					}
-					w.reqLock.RUnlock()
 
 					w.logger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
 				} else {
@@ -160,11 +155,10 @@ func (w *endorserSignWorker) work() {
 
 					// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
 					//  so it doen't make sense to new a go routine here.
-					go w.parseResponse(response)
+					w.parseResponse(response)
 				}
 			}
-
-			cancel()
+			w.reqLock.Unlock()
 			batchId++
 		}
 	}()
