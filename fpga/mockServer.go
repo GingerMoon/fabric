@@ -4,7 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"fmt"
+	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/protos/fpga"
 	"google.golang.org/grpc"
 	"io"
@@ -21,17 +21,18 @@ func init() {
 }
 
 type fpgaServer struct {
+	logger *flogging.FabricLogger
 }
 
 func (s *fpgaServer) Sign(stream fpga.BatchRPC_SignServer) error {
-
+	s.logger.Errorf("Sign rpc invoke")
 	for {
 		batchReq, err := stream.Recv()
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("sign stream.Recv() EOF!, err: %v \n\n", err)
+				s.logger.Errorf("sign stream.Recv() EOF!, err: %v \n\n", err)
 			} else {
-				fmt.Printf("sign stream.Recv() failed!, err: %v \n\n", err)
+				s.logger.Errorf("sign stream.Recv() failed!, err: %v \n\n", err)
 			}
 			return err
 		}
@@ -52,18 +53,21 @@ func (s *fpgaServer) Sign(stream fpga.BatchRPC_SignServer) error {
 			reply.SgReplies = append(reply.SgReplies, signature)
 			reply.BatchId = batchReq.BatchId
 		}
-		logger.Debugf("mock server returned sign rpc. batch_id: %d, ReqCount: %d", reply.BatchId, len(reply.SgReplies))
+		if err := stream.Send(reply); err != nil {
+			s.logger.Errorf("mockserver sign rpc return failed! %v, %v", reply, err)
+		}
+		s.logger.Debugf("mock server returned sign rpc. batch_id: %d, ReqCount: %d", reply.BatchId, len(reply.SgReplies))
 	}
 
 	return nil
 }
 
 func (s *fpgaServer) Verify(stream fpga.BatchRPC_VerifyServer) error {
-
+	s.logger.Errorf("Verify rpc invoke")
 	for {
 		batchReq, err := stream.Recv()
 		if err != nil {
-			fmt.Printf("verify stream.Recv() failed!, err: %v \n\n", err)
+			s.logger.Errorf("verify stream.Recv() failed!, err: %v \n\n", err)
 			return err
 		}
 
@@ -83,13 +87,16 @@ func (s *fpgaServer) Verify(stream fpga.BatchRPC_VerifyServer) error {
 
 			valid := ecdsa.Verify(&pubkey, request.Hash, &intR, &intS)
 			if !valid {
-				logger.Infof("grpc server verify result: false")
+				s.logger.Infof("grpc server verify result: false")
 			}
 			result := &fpga.BatchReply_SignVerReply{ReqId:request.ReqId, Verified:valid}
 			reply.SvReplies = append(reply.SvReplies, result)
 			reply.BatchId = batchReq.BatchId
 		}
-		logger.Debugf("mock server returned verify rpc. batch_id: %d, ReqCount: %d", reply.BatchId, len(reply.SvReplies))
+		if err := stream.Send(reply); err != nil {
+			s.logger.Errorf("mockserver verify rpc return failed! %v, %v", reply, err)
+		}
+		s.logger.Debugf("mock server returned verify rpc. batch_id: %d, ReqCount: %d", reply.BatchId, len(reply.SvReplies))
 	}
 
 	return nil
@@ -97,20 +104,22 @@ func (s *fpgaServer) Verify(stream fpga.BatchRPC_VerifyServer) error {
 
 func newServer() *fpgaServer {
 	s := &fpgaServer{}
+	s.logger = flogging.MustGetLogger("fpga.mockserver")
 	return s
 }
 
 func start() {
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
-	fpga.RegisterBatchRPCServer(grpcServer, newServer())
-	logger.Infof("start a fpga mock server.")
+	mockserver := newServer()
+	fpga.RegisterBatchRPCServer(grpcServer, mockserver)
+	mockserver.logger.Infof("start a fpga mock server.")
 	lis, err := net.Listen("tcp", "0.0.0.0:10000")
 	if err != nil {
-		logger.Fatalf("failed to listen: %v", err)
+		mockserver.logger.Fatalf("failed to listen: %v", err)
 	}
 	err = grpcServer.Serve(lis)
 	if err != nil {
-		logger.Fatalf("grpcServer.Serve(lis) failed.")
+		mockserver.logger.Fatalf("grpcServer.Serve(lis) failed.")
 	}
 }

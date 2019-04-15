@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 env GOOS=linux GOARCH=amd64 go build
 cd /c/goworkspace/src/bitbucket.org/accelorteam/demo/fabric-network/first-network
 ./byfn.sh down
