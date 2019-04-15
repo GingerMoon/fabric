@@ -11,8 +11,8 @@ package fpga;
 // The gPRC service definition.
 service BatchRPC {
   // Sends a Batch
-  rpc Sign (BatchRequest) returns (BatchReply) {}
-  rpc Verify (BatchRequest) returns (BatchReply) {}
+  rpc Sign (stream BatchRequest) returns (stream BatchReply) {}
+  rpc Verify (stream BatchRequest) returns (stream BatchReply) {}
 }
 
 // 批申请数据结构

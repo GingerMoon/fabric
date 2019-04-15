@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
-	"time"
 	"unsafe"
 )
 
@@ -47,6 +46,11 @@ func (w *verifyWorker) work() {
 	w.logger.Infof("verifyWorker starts to work.")
 
 	go func() {
+		stream, err := w.client.Verify(context.Background())
+		if err != nil {
+			w.logger.Fatalf("w.client.Verify(context.Background()) failed! err: %v", err)
+		}
+
 		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
 		for task := range w.taskCh {
 			w.cResultChs[batchId] = task.out
@@ -61,33 +65,17 @@ func (w *verifyWorker) work() {
 
 			// invoke the rpc
 			w.logger.Debugf("rpc request: %v", *task.in)
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			response, err := w.client.Verify(ctx, task.in)
-
+			err := stream.Send(task.in)
 			// rpc failed, print the state information.
 			if err != nil {
-				w.logger.Errorf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
-
-				var size uintptr = 0
-				for _, req := range task.in.SvRequests {
-					size += unsafe.Sizeof(req.SignR)
-					size += unsafe.Sizeof(req.SignS)
-					size += unsafe.Sizeof(req.Px)
-					size += unsafe.Sizeof(req.Py)
-					size += unsafe.Sizeof(req.Hash)
-					size += unsafe.Sizeof(req.ReqId)
-					size += unsafe.Sizeof(req.XXX_NoUnkeyedLiteral)
-					size += unsafe.Sizeof(req.XXX_sizecache)
-					size += unsafe.Sizeof(req.XXX_unrecognized)
-				}
-				w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, task.in)
-				//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
-
-				for k, v := range w.cResultChs {
-					w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
-				}
-
+				w.dump(task.in)
 				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
+			}
+
+			response, err := stream.Recv()
+			if err != nil {
+				w.dump(task.in)
+				w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", batchId, err)
 			}
 			w.logger.Debugf("rpc response: %v", *response)
 
@@ -95,13 +83,35 @@ func (w *verifyWorker) work() {
 			//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(task.in.SvRequests), atomic.LoadInt32(&w.gossipCount))
 			//atomic.StoreInt32(&w.gossipCount, 0)
 
-			cancel()
 			// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
 			//  so it doen't make sense to new a go routine here.
 			w.parseResponse(response)
 			batchId++
 		}
 	}()
+}
+
+func (w *verifyWorker) dump(request *pb.BatchRequest) {
+	var size uintptr = 0
+	for _, req := range request.SvRequests {
+		size += unsafe.Sizeof(req.SignR)
+		size += unsafe.Sizeof(req.SignS)
+		size += unsafe.Sizeof(req.Px)
+		size += unsafe.Sizeof(req.Py)
+		size += unsafe.Sizeof(req.Hash)
+		size += unsafe.Sizeof(req.ReqId)
+		size += unsafe.Sizeof(req.XXX_NoUnkeyedLiteral)
+		size += unsafe.Sizeof(req.XXX_sizecache)
+		size += unsafe.Sizeof(req.XXX_unrecognized)
+	}
+	w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, request)
+	//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
+
+	w.logger.Errorf("it's only a dump. some state data is not thread safe.")
+	for k, v := range w.cResultChs {
+		w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
+	}
+
 }
 
 func (w *verifyWorker) parseResponse(response *pb.BatchReply) {

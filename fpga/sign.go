@@ -91,6 +91,11 @@ func (w *endorserSignWorker) work() {
 
 	// invoke the rpc every interval Microsecond
 	go func() {
+		stream, err := w.client.Sign(context.Background())
+		if err != nil {
+			w.logger.Fatalf("w.client.Sign(context.Background()) failed! err: %v", err)
+		}
+
 		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
 		for true {
 			time.Sleep( w.interval * time.Microsecond)
@@ -121,47 +126,54 @@ func (w *endorserSignWorker) work() {
 				}
 
 				request := &pb.BatchRequest{SgRequests:sgReqs, BatchType:0, BatchId: batchId, ReqCount:uint32(len(sgReqs))}
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				response, err := w.client.Sign(ctx, request)
-				cancel()
-
+				err = stream.Send(request)
 				// rpc failed. print the state information.
 				if err != nil {
-					var size uintptr = 0
-					for _, req := range request.SgRequests {
-						size += unsafe.Sizeof(req.D)
-						size += unsafe.Sizeof(req.Hash)
-						size += unsafe.Sizeof(req.ReqId)
-						size += unsafe.Sizeof(req.XXX_NoUnkeyedLiteral)
-						size += unsafe.Sizeof(req.XXX_sizecache)
-						size += unsafe.Sizeof(req.XXX_unrecognized)
-					}
-					w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, request)
-					w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
-					//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
-
-					w.logger.Errorf("pending w.cRequests.Len is %d", w.cRequests.Len())
-					for k, v := range w.cResultChs {
-						w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
-					}
-
-					w.logger.Fatalf("rpc call EndorserSign failed. Will try again later. batchId: %d. err: %s", batchId, err)
-				} else {
-					w.logger.Debugf("rpc response: %v", *response)
-
-					// gossip
-					//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
-					//atomic.StoreInt32(&w.gossipCount, 0)
-
-					// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
-					//  so it doen't make sense to new a go routine here.
-					w.parseResponse(response)
+					w.dump(request)
+					w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", batchId, err)
 				}
+
+				response, err := stream.Recv()
+				if err != nil {
+					w.dump(request)
+					w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", batchId, err)
+				}
+				w.logger.Debugf("rpc response: %v", *response)
+
+				// gossip
+				//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
+				//atomic.StoreInt32(&w.gossipCount, 0)
+
+				// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
+				//  so it doen't make sense to new a go routine here.
+				w.parseResponse(response)
 			}
 			w.reqLock.Unlock()
 			batchId++
 		}
 	}()
+}
+
+func (w *endorserSignWorker) dump(request *pb.BatchRequest) {
+	var size uintptr = 0
+	for _, req := range request.SgRequests {
+		size += unsafe.Sizeof(req.D)
+		size += unsafe.Sizeof(req.Hash)
+		size += unsafe.Sizeof(req.ReqId)
+		size += unsafe.Sizeof(req.XXX_NoUnkeyedLiteral)
+		size += unsafe.Sizeof(req.XXX_sizecache)
+		size += unsafe.Sizeof(req.XXX_unrecognized)
+	}
+
+	w.logger.Errorf("Exiting due to the failed rpc request (the size is %d): %v", size, request)
+	w.logger.Errorf("batch size: %d. interval: %d(Microseconds)", w.batchSize, w.interval)
+	//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
+
+	w.logger.Errorf("it's only a dump. some state data is not thread safe.")
+	w.logger.Errorf("pending w.cRequests.Len is %d", w.cRequests.Len())
+	for k, v := range w.cResultChs {
+		w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
+	}
 }
 
 // this method need to be locked where it is invoked.
