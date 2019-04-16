@@ -147,6 +147,9 @@ func (w *verifyOrdiWorker) parseResponse(response *pb.BatchReply) {
 
 		w.rcLock.Lock()
 		if err != nil || w.cResultChs[reqId] == nil {
+			for k, v := range w.cResultChs {
+				w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
+			}
 			w.logger.Fatalf("[verifyOrdiWorker] the request id(%s) in the rpc reply is not stored before.", result)
 		}
 
