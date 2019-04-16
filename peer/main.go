@@ -8,6 +8,7 @@ package main
 
 import (
 	//_ "net/http/pprof"
+	_ "github.com/hyperledger/fabric/fpga/mock"
 	"os"
 	"strings"
 

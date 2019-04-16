@@ -1,4 +1,4 @@
-package fpga
+package mock
 
 import (
 	"crypto/ecdsa"
@@ -15,7 +15,6 @@ import (
 
 func init() {
 	if os.Getenv("FPGA_MOCK") == "1" {
-		logger.Infof("going to start the mockserver")
 		go start()
 	}
 }
