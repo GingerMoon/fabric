@@ -35,8 +35,7 @@ type endorserSignWorker struct {
 	reqLock   *sync.Mutex
 	cRequests *list.List
 
-	rcLock *sync.Mutex // result-channelReturn
-	cResultChs map[int] chan<-*pb.BatchReply_SignGenReply
+	cResultChs sync.Map // map[int] chan<-*pb.BatchReply_SignGenReply
 
 	batchSize int
 	interval time.Duration // milliseconds
@@ -52,9 +51,6 @@ func (w *endorserSignWorker) start() {
 func (w *endorserSignWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.sign")
 	w.batchSize = 10000
-
-	w.rcLock = &sync.Mutex{}
-	w.cResultChs = make(map[int] chan<-*pb.BatchReply_SignGenReply)
 
 	w.reqLock = &sync.Mutex{}
 	w.cRequests = list.New()
@@ -80,11 +76,9 @@ func (w *endorserSignWorker) work() {
 			w.reqLock.Lock()
 			w.cRequests.PushBack(task.in)
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)
+			w.cResultChs.Store(reqId, task.out)
 			w.reqLock.Unlock()
 
-			w.rcLock.Lock()
-			w.cResultChs[reqId] = task.out
-			w.rcLock.Unlock()
 			reqId++
 		}
 	}()
@@ -146,7 +140,7 @@ func (w *endorserSignWorker) work() {
 
 				// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
 				//  so it doen't make sense to new a go routine here.
-				w.parseResponse(response)
+				go w.parseResponse(response)
 			}
 			w.reqLock.Unlock()
 			batchId++
@@ -171,9 +165,9 @@ func (w *endorserSignWorker) dump(request *pb.BatchRequest) {
 
 	w.logger.Errorf("it's only a dump. some state data is not thread safe.")
 	w.logger.Errorf("pending w.cRequests.Len is %d", w.cRequests.Len())
-	for k, v := range w.cResultChs {
-		w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
-	}
+	//for k, v := range w.cResultChs {
+	//	w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
+	//}
 }
 
 // this method need to be locked where it is invoked.
@@ -182,18 +176,21 @@ func (w *endorserSignWorker) parseResponse(response *pb.BatchReply) {
 	for _, sig := range signatures {
 		reqId, err := strconv.Atoi(sig.ReqId)
 
-		w.rcLock.Lock()
-		if err != nil || w.cResultChs[reqId] == nil {
-			for k, v := range w.cResultChs {
-				w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
-			}
+		v, ok := w.cResultChs.Load(reqId)
+		if err != nil || !ok {
+			//for k, v := range w.cResultChs {
+			//	w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
+			//}
 			w.logger.Fatalf("the request id(%s)-(%v) in the rpc reply is not stored before.", sig.ReqId, reqId)
 		}
 
-		w.cResultChs[reqId] <- sig
-		close(w.cResultChs[reqId])
-		delete(w.cResultChs, reqId)
-		w.rcLock.Unlock()
+		outCh := v.(chan *pb.BatchReply_SignGenReply)
+		if outCh == nil {
+			w.logger.Fatalf("the request id(%s)-(%v)'s output channel is not found.", sig.ReqId, reqId)
+		}
+		outCh <- sig
+		close(outCh)
+		w.cResultChs.Delete(reqId)
 	}
 }
 

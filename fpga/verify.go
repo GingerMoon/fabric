@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
+	"sync"
 	"unsafe"
 )
 
@@ -25,7 +26,7 @@ type verifyWorker struct {
 	client      	pb.BatchRPCClient
 
 	taskCh chan *verifyRpcTask
-	cResultChs map[uint64] chan<-*pb.BatchReply
+	cResultChs sync.Map // map[uint64] chan<-*pb.BatchReply // this member is not accessed by multiple go routines.
 
 	//gossipCount int32 // todo to be deleted. it's only for investigation purpose.
 }
@@ -39,7 +40,6 @@ func (w *verifyWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.verify")
 	w.client = pb.NewBatchRPCClient(conn)
 	w.taskCh = make(chan *verifyRpcTask)
-	w.cResultChs = make(map[uint64] chan<-*pb.BatchReply)
 }
 
 func (w *verifyWorker) work() {
@@ -53,7 +53,7 @@ func (w *verifyWorker) work() {
 
 		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
 		for task := range w.taskCh {
-			w.cResultChs[batchId] = task.out
+			w.cResultChs.Store(batchId, task.out)
 
 			// prepare rpc parameter
 			task.in.BatchId = batchId
@@ -85,7 +85,7 @@ func (w *verifyWorker) work() {
 
 			// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
 			//  so it doen't make sense to new a go routine here.
-			w.parseResponse(response)
+			go w.parseResponse(response)
 			batchId++
 		}
 	}()
@@ -108,22 +108,28 @@ func (w *verifyWorker) dump(request *pb.BatchRequest) {
 	//w.logger.Errorf("gossip count: %d", atomic.LoadInt32(&w.gossipCount))
 
 	w.logger.Errorf("it's only a dump. some state data is not thread safe.")
-	for k, v := range w.cResultChs {
-		w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
-	}
+	//for k, v := range w.cResultChs {
+	//	w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
+	//}
 
 }
 
 func (w *verifyWorker) parseResponse(response *pb.BatchReply) {
-	if w.cResultChs[response.BatchId] == nil {
-		for k, v := range w.cResultChs {
-			w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
-		}
+	v, ok := w.cResultChs.Load(response.BatchId)
+	if !ok {
+		//for k, v := range w.cResultChs {
+		//	w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
+		//}
 		w.logger.Fatalf("w.cResultChs[response.BatchId] is nil! k: %v", response.BatchId)
 	}
-	w.cResultChs[response.BatchId] <- response
-	close(w.cResultChs[response.BatchId])
-	delete(w.cResultChs, response.BatchId)
+
+	outCh := v.(chan *pb.BatchReply)
+	if outCh == nil {
+		w.logger.Fatalf("failed to find w.cResultChs[response.BatchId]! k: %v", response.BatchId)
+	}
+	outCh <- response
+	close(outCh)
+	w.cResultChs.Delete(response.BatchId)
 }
 
 func (w *verifyWorker) pushFront(task *verifyRpcTask) {

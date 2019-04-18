@@ -33,8 +33,7 @@ type verifyOrdiWorker struct {
 	logger			*flogging.FabricLogger
 	taskCh          chan *verifyOrdiTask
 
-	rcLock     *sync.Mutex
-	cResultChs map[int] chan<-*pb.BatchReply_SignVerReply // TODO maybe we need to change another container for storing the resp ch.
+	cResultChs  sync.Map //map[int] chan<-*pb.BatchReply_SignVerReply // TODO maybe we need to change another container for storing the resp ch.
 
 	reqLock *sync.Mutex
 	cRequests  *list.List
@@ -68,8 +67,6 @@ func (w *verifyOrdiWorker) init() {
 	w.reqLock = &sync.Mutex{}
 	w.cRequests = list.New()
 
-	w.rcLock = &sync.Mutex{}
-	w.cResultChs = make(map[int] chan<-*pb.BatchReply_SignVerReply)
 }
 
 func (w *verifyOrdiWorker) work() {
@@ -82,11 +79,9 @@ func (w *verifyOrdiWorker) work() {
 			w.reqLock.Lock()
 			w.cRequests.PushBack(task.in)
 			task.in.ReqId = fmt.Sprintf("%064d", reqId)
+			w.cResultChs.Store(reqId, task.out)
 			w.reqLock.Unlock()
 
-			w.rcLock.Lock()
-			w.cResultChs[reqId] = task.out
-			w.rcLock.Unlock()
 			reqId++
 		}
 	}()
@@ -128,7 +123,7 @@ func (w *verifyOrdiWorker) work() {
 
 				// parse rpc response
 				for response := range out {
-					w.parseResponse(response)
+					go w.parseResponse(response)
 					//w.logger.Debugf("total verify rpc cRequests: %d. gossip: %d.", w.cRequests.Len(), atomic.LoadInt32(&w.gossipCount))
 					//atomic.StoreInt32(&w.gossipCount, 0)
 				}
@@ -145,18 +140,18 @@ func (w *verifyOrdiWorker) parseResponse(response *pb.BatchReply) {
 	for _, result := range verifyResults {
 		reqId, err := strconv.Atoi(result.ReqId)
 
-		w.rcLock.Lock()
-		if err != nil || w.cResultChs[reqId] == nil {
-			for k, v := range w.cResultChs {
-				w.logger.Errorf("w.cResultChs[%v]: %v", k, v)
-			}
-			w.logger.Fatalf("[verifyOrdiWorker] the request id(%s) in the rpc reply is not stored before.", result)
+		v, ok := w.cResultChs.Load(reqId)
+		if err != nil || !ok {
+			w.logger.Fatalf("the request id(%s) in the rpc reply is not stored before.", result)
 		}
 
-		w.cResultChs[reqId] <- result
-		close(w.cResultChs[reqId])
-		delete(w.cResultChs, reqId)
-		w.rcLock.Unlock()
+		outCh := v.(chan *pb.BatchReply_SignVerReply)
+		if outCh == nil {
+			w.logger.Fatalf("failed to find the request id(%s)'s output channel. ", result)
+		}
+		outCh <- result
+		close(outCh)
+		w.cResultChs.Delete(reqId)
 	}
 }
 
