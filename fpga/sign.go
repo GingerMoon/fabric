@@ -50,17 +50,24 @@ func (w *endorserSignWorker) start() {
 
 func (w *endorserSignWorker) init() {
 	w.logger = flogging.MustGetLogger("fpga.sign")
-	w.batchSize = 10000
 
 	w.reqLock = &sync.Mutex{}
 	w.cRequests = list.New()
 
 	tmp, err := strconv.Atoi(os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
 	if err != nil {
-		w.logger.Fatalf("FPGA_BATCH_GEN_INTERVAL(%s)(ms) is not set correctly!, not the batch_gen_interval is set to default as 50 ms",
+		w.logger.Errorf("FPGA_BATCH_GEN_INTERVAL(%s)(us) is not set correctly!, not the FPGA_BATCH_GEN_INTERVAL is set to default as 50 us",
 			os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
+		tmp = 50
 	}
 	w.interval = time.Duration(tmp)
+
+	w.batchSize, err = strconv.Atoi(os.Getenv("FPGA_BATCH_SIZE"))
+	if err != nil {
+		w.logger.Errorf("FPGA_BATCH_SIZE(%s) is not set correctly!, not the FPGA_BATCH_SIZE is set to default as 10000",
+			os.Getenv("FPGA_BATCH_SIZE"))
+		w.batchSize = 10000
+	}
 
 	w.client = pb.NewBatchRPCClient(conn)
 	w.taskCh = make(chan *endorserSignRpcTask)

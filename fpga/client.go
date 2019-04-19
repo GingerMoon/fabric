@@ -16,7 +16,8 @@ func init() {
 
 	logger.Infof("FPGA_MOCK: ", os.Getenv("FPGA_MOCK"))
 	logger.Infof("FPGA_SERVER_ADDR: ", serverAddr)
-	logger.Infof("FPGA_BATCH_GEN_INTERVAL: (microsecond)", os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
+	logger.Infof("FPGA_BATCH_GEN_INTERVAL: (us)", os.Getenv("FPGA_BATCH_GEN_INTERVAL"))
+	logger.Infof("FPGA_BATCH_SIZE", os.Getenv("FPGA_BATCH_SIZE"))
 
 	var err error
 	var opts []grpc.DialOption
