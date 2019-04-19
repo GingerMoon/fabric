@@ -398,6 +398,69 @@ func (e *Endorser) preProcess(signedProp *pb.SignedProposal) (*validateResult, e
 	return vr, nil
 }
 
+func (e *Endorser) preProcessFpga(signedProp *pb.SignedProposal, chValidCreator chan error) (*validateResult, error) {
+	vr := &validateResult{}
+	// at first, we check whether the message is valid
+	prop, hdr, hdrExt, err := validation.ValidateProposalMessageFpga(signedProp, chValidCreator)
+
+	if err != nil {
+		vr.resp = &pb.ProposalResponse{Response: &pb.Response{Status: 500, Message: err.Error()}}
+		return vr, err
+	}
+
+	chdr, err := putils.UnmarshalChannelHeader(hdr.ChannelHeader)
+	if err != nil {
+		vr.resp = &pb.ProposalResponse{Response: &pb.Response{Status: 500, Message: err.Error()}}
+		return vr, err
+	}
+
+	shdr, err := putils.GetSignatureHeader(hdr.SignatureHeader)
+	if err != nil {
+		vr.resp = &pb.ProposalResponse{Response: &pb.Response{Status: 500, Message: err.Error()}}
+		return vr, err
+	}
+
+	// block invocations to security-sensitive system chaincodes
+	if e.s.IsSysCCAndNotInvokableExternal(hdrExt.ChaincodeId.Name) {
+		endorserLogger.Errorf("Error: an attempt was made by %#v to invoke system chaincode %s", shdr.Creator, hdrExt.ChaincodeId.Name)
+		err = errors.Errorf("chaincode %s cannot be invoked through a proposal", hdrExt.ChaincodeId.Name)
+		vr.resp = &pb.ProposalResponse{Response: &pb.Response{Status: 500, Message: err.Error()}}
+		return vr, err
+	}
+
+	chainID := chdr.ChannelId
+	txid := chdr.TxId
+	endorserLogger.Debugf("[%s][%s] processing txid: %s", chainID, shorttxid(txid), txid)
+
+	if chainID != "" {
+		// Here we handle uniqueness check and ACLs for proposals targeting a chain
+		// Notice that ValidateProposalMessage has already verified that TxID is computed properly
+		if _, err = e.s.GetTransactionByID(chainID, txid); err == nil {
+			err = errors.Errorf("duplicate transaction found [%s]. Creator [%x]", txid, shdr.Creator)
+			vr.resp = &pb.ProposalResponse{Response: &pb.Response{Status: 500, Message: err.Error()}}
+			return vr, err
+		}
+
+		// check ACL only for application chaincodes; ACLs
+		// for system chaincodes are checked elsewhere
+		if !e.s.IsSysCC(hdrExt.ChaincodeId.Name) {
+			// check that the proposal complies with the Channel's writers
+			if err = e.s.CheckACL(signedProp, chdr, shdr, hdrExt); err != nil {
+				vr.resp = &pb.ProposalResponse{Response: &pb.Response{Status: 500, Message: err.Error()}}
+				return vr, err
+			}
+		}
+	} else {
+		// chainless proposals do not/cannot affect ledger and cannot be submitted as transactions
+		// ignore uniqueness checks; also, chainless proposals are not validated using the policies
+		// of the chain since by definition there is no chain; they are validated against the local
+		// MSP of the peer instead by the call to ValidateProposalMessage above
+	}
+
+	vr.prop, vr.hdrExt, vr.chainID, vr.txid = prop, hdrExt, chainID, txid
+	return vr, nil
+}
+
 // ProcessProposal process the Proposal
 func (e *Endorser) ProcessProposal(ctx context.Context, signedProp *pb.SignedProposal) (*pb.ProposalResponse, error) {
 	addr := util.ExtractRemoteAddress(ctx)
@@ -405,7 +468,8 @@ func (e *Endorser) ProcessProposal(ctx context.Context, signedProp *pb.SignedPro
 	defer endorserLogger.Debug("Exit: request from", addr)
 
 	// 0 -- check and validate
-	vr, err := e.preProcess(signedProp)
+	chValidCreator := make(chan error)  // the channel for accepting the checkCreator(verify is done by FPGA) result.
+	vr, err := e.preProcessFpga(signedProp, chValidCreator)
 	if err != nil {
 		resp := vr.resp
 		return resp, err
@@ -495,11 +559,17 @@ func (e *Endorser) ProcessProposal(ctx context.Context, signedProp *pb.SignedPro
 		}
 	}
 
+	// wait for the check creator (fpga verify response) result
+	if err := <- chValidCreator; err != nil {
+		vr := &validateResult{}
+		vr.resp = &pb.ProposalResponse{Response: &pb.Response{Status: 500, Message: err.Error()}}
+		return vr.resp, err
+	}
+
 	// Set the proposal response payload - it
 	// contains the "return value" from the
 	// chaincode invocation
 	pResp.Response = res
-
 	return pResp, nil
 }
 

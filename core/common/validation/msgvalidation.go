@@ -147,6 +147,84 @@ func ValidateProposalMessage(signedProp *pb.SignedProposal) (*pb.Proposal, *comm
 	}
 }
 
+func ValidateProposalMessageFpga(signedProp *pb.SignedProposal, chValidCreator chan error) (*pb.Proposal, *common.Header, *pb.ChaincodeHeaderExtension, error) {
+	if signedProp == nil {
+		return nil, nil, nil, errors.New("nil arguments")
+	}
+
+	putilsLogger.Debugf("ValidateProposalMessage starts for signed proposal %p", signedProp)
+
+	// extract the Proposal message from signedProp
+	prop, err := utils.GetProposal(signedProp.ProposalBytes)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// 1) look at the ProposalHeader
+	hdr, err := utils.GetHeader(prop.Header)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// validate the header
+	chdr, shdr, err := validateCommonHeader(hdr)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// validate the signature
+	go func() {
+		err = checkSignatureFromCreator(shdr.Creator, signedProp.Signature, signedProp.ProposalBytes, chdr.ChannelId)
+		if err != nil {
+			// log the exact message on the peer but return a generic error message to
+			// avoid malicious users scanning for channels
+			putilsLogger.Warningf("channel [%s]: %s", chdr.ChannelId, err)
+			sId := &msp.SerializedIdentity{}
+			err := proto.Unmarshal(shdr.Creator, sId)
+			if err != nil {
+				// log the error here as well but still only return the generic error
+				err = errors.Wrap(err, "could not deserialize a SerializedIdentity")
+				putilsLogger.Warningf("channel [%s]: %s", chdr.ChannelId, err)
+			}
+			chValidCreator <- errors.Errorf("access denied: channel [%s] creator org [%s]", chdr.ChannelId, sId.Mspid)
+		}
+		close(chValidCreator)
+	}()
+
+	// Verify that the transaction ID has been computed properly.
+	// This check is needed to ensure that the lookup into the ledger
+	// for the same TxID catches duplicates.
+	err = utils.CheckTxID(
+		chdr.TxId,
+		shdr.Nonce,
+		shdr.Creator)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// continue the validation in a way that depends on the type specified in the header
+	switch common.HeaderType(chdr.Type) {
+	case common.HeaderType_CONFIG:
+		//which the types are different the validation is the same
+		//viz, validate a proposal to a chaincode. If we need other
+		//special validation for confguration, we would have to implement
+		//special validation
+		fallthrough
+	case common.HeaderType_ENDORSER_TRANSACTION:
+		// validation of the proposal message knowing it's of type CHAINCODE
+		chaincodeHdrExt, err := validateChaincodeProposalMessage(prop, hdr)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		return prop, hdr, chaincodeHdrExt, err
+	default:
+		//NOTE : we proably need a case
+		return nil, nil, nil, errors.Errorf("unsupported proposal type %d", common.HeaderType(chdr.Type))
+	}
+}
+
+
 // given a creator, a message and a signature,
 // this function returns nil if the creator
 // is a valid cert and the signature is valid
