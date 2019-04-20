@@ -28,7 +28,6 @@ type endorserSignRpcTask struct {
 
 type endorserSignWorker struct {
 	logger *flogging.FabricLogger
-	client pb.BatchRPCClient
 	taskCh chan *endorserSignRpcTask
 
 
@@ -39,6 +38,9 @@ type endorserSignWorker struct {
 
 	batchSize int
 	interval time.Duration // milliseconds
+
+	rpcCh chan *pb.BatchRequest
+	rpcClientCnt int
 
 	//gossipCount int32 // todo to be deleted. it's only for investigation purpose.
 }
@@ -69,7 +71,14 @@ func (w *endorserSignWorker) init() {
 		w.batchSize = 10000
 	}
 
-	w.client = pb.NewBatchRPCClient(conn)
+	w.rpcClientCnt, err = strconv.Atoi(os.Getenv("FPGA_RPC_CLIENT"))
+	if err != nil {
+		w.logger.Errorf("FPGA_RPC_CLIENT_COUNT(%s) is not set correctly!, not the FPGA_RPC_CLIENT_COUNT is set to default as 2",
+			os.Getenv("FPGA_RPC_CLIENT_COUNT"))
+		w.rpcClientCnt = 2
+	}
+	w.rpcCh = make(chan *pb.BatchRequest)
+
 	w.taskCh = make(chan *endorserSignRpcTask)
 }
 
@@ -92,11 +101,6 @@ func (w *endorserSignWorker) work() {
 
 	// invoke the rpc every interval Microsecond
 	go func() {
-		stream, err := w.client.Sign(context.Background())
-		if err != nil {
-			w.logger.Fatalf("w.client.Sign(context.Background()) failed! err: %v", err)
-		}
-
 		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
 		for true {
 			time.Sleep( w.interval * time.Microsecond)
@@ -127,32 +131,39 @@ func (w *endorserSignWorker) work() {
 				}
 
 				request := &pb.BatchRequest{SgRequests:sgReqs, BatchType:0, BatchId: batchId, ReqCount:uint32(len(sgReqs))}
-				err = stream.Send(request)
-				// rpc failed. print the state information.
-				if err != nil {
-					w.dump(request)
-					w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", batchId, err)
-				}
-
-				response, err := stream.Recv()
-				if err != nil {
-					w.dump(request)
-					w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", batchId, err)
-				}
-				w.logger.Debugf("rpc response: %v", *response)
-
-				// gossip
-				//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
-				//atomic.StoreInt32(&w.gossipCount, 0)
-
-				// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
-				//  so it doen't make sense to new a go routine here.
-				go w.parseResponse(response)
+				w.rpcCh <- request
 			}
 			w.reqLock.Unlock()
 			batchId++
 		}
 	}()
+
+	for i := 0; i < w.rpcClientCnt; i++ {
+		go w.rpc()
+	}
+}
+
+func (w *endorserSignWorker) rpc() {
+	client := pb.NewBatchRPCClient(conn)
+
+	for request := range w.rpcCh {
+		response, err := client.Sign(context.Background(), request)
+		// rpc failed. print the state information.
+		if err != nil {
+			w.dump(request)
+			w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", request.BatchId, err)
+		}
+		w.logger.Debugf("rpc request: %v", *request)
+		w.logger.Debugf("rpc response: %v", *response)
+
+		// gossip
+		//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
+		//atomic.StoreInt32(&w.gossipCount, 0)
+
+		// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
+		//  so it doen't make sense to new a go routine here.
+		go w.parseResponse(response)
+	}
 }
 
 func (w *endorserSignWorker) dump(request *pb.BatchRequest) {

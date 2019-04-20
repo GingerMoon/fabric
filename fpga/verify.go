@@ -4,6 +4,8 @@ import (
 	"context"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/fpga"
+	"os"
+	"strconv"
 	"sync"
 	"unsafe"
 )
@@ -28,6 +30,9 @@ type verifyWorker struct {
 	taskCh chan *verifyRpcTask
 	cResultChs sync.Map // map[uint64] chan<-*pb.BatchReply // this member is not accessed by multiple go routines.
 
+	rpcCh chan *pb.BatchRequest
+	rpcClientCnt int
+
 	//gossipCount int32 // todo to be deleted. it's only for investigation purpose.
 }
 
@@ -37,20 +42,25 @@ func (w *verifyWorker) start() {
 }
 
 func (w *verifyWorker) init() {
+	var err error
+
 	w.logger = flogging.MustGetLogger("fpga.verify")
 	w.client = pb.NewBatchRPCClient(conn)
 	w.taskCh = make(chan *verifyRpcTask)
+
+	w.rpcClientCnt, err = strconv.Atoi(os.Getenv("FPGA_RPC_CLIENT"))
+	if err != nil {
+		w.logger.Errorf("FPGA_RPC_CLIENT_COUNT(%s) is not set correctly!, not the FPGA_RPC_CLIENT_COUNT is set to default as 2",
+			os.Getenv("FPGA_RPC_CLIENT_COUNT"))
+		w.rpcClientCnt = 2
+	}
+	w.rpcCh = make(chan *pb.BatchRequest)
 }
 
 func (w *verifyWorker) work() {
 	w.logger.Infof("verifyWorker starts to work.")
 
 	go func() {
-		stream, err := w.client.Verify(context.Background())
-		if err != nil {
-			w.logger.Fatalf("w.client.Verify(context.Background()) failed! err: %v", err)
-		}
-
 		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
 		for task := range w.taskCh {
 			w.cResultChs.Store(batchId, task.out)
@@ -65,30 +75,37 @@ func (w *verifyWorker) work() {
 
 			// invoke the rpc
 			w.logger.Debugf("rpc request: %v", *task.in)
-			err := stream.Send(task.in)
-			// rpc failed, print the state information.
-			if err != nil {
-				w.dump(task.in)
-				w.logger.Fatalf("rpc call EndorserVerify failed. batchId: %d. ReqCount: %d. err: %s", batchId, task.in.ReqCount, err)
-			}
-
-			response, err := stream.Recv()
-			if err != nil {
-				w.dump(task.in)
-				w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", batchId, err)
-			}
-			w.logger.Debugf("rpc response: %v", *response)
-
-			// gossip
-			//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(task.in.SvRequests), atomic.LoadInt32(&w.gossipCount))
-			//atomic.StoreInt32(&w.gossipCount, 0)
-
-			// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
-			//  so it doen't make sense to new a go routine here.
-			go w.parseResponse(response)
+			w.rpcCh <- task.in
 			batchId++
 		}
 	}()
+
+	for i := 0; i < w.rpcClientCnt; i++ {
+		go w.rpc()
+	}
+}
+
+func (w *verifyWorker) rpc() {
+	client := pb.NewBatchRPCClient(conn)
+
+	for request := range w.rpcCh {
+		response, err := client.Verify(context.Background(), request)
+		// rpc failed. print the state information.
+		if err != nil {
+			w.dump(request)
+			w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", request.BatchId, err)
+		}
+		w.logger.Debugf("rpc request: %v", *request)
+		w.logger.Debugf("rpc response: %v", *response)
+
+		// gossip
+		//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
+		//atomic.StoreInt32(&w.gossipCount, 0)
+
+		// the req_id can be the same for different batch, and meanwhile, concurrent rpc is not supported by the server.
+		//  so it doen't make sense to new a go routine here.
+		go w.parseResponse(response)
+	}
 }
 
 func (w *verifyWorker) dump(request *pb.BatchRequest) {
