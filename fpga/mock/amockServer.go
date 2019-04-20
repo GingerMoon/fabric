@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"sync"
 )
 
 func init() {
@@ -37,20 +38,20 @@ func (s *fpgaServer) Sign(stream fpga.BatchRPC_SignServer) error {
 		}
 
 		reply := &fpga.BatchReply{}
+		reply.BatchId = batchReq.BatchId
 
+		ch := make(chan *fpga.BatchReply_SignGenReply)
+		wg := &sync.WaitGroup{}
+		wg.Add(len(batchReq.SgRequests))
 		for _, request := range batchReq.SgRequests {
-			d := &big.Int{}
-			d.SetBytes(request.D)
-			privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-			privateKey.D = d
-
-			r, s, err := ecdsa.Sign(rand.Reader, privateKey, request.Hash)
-			if err != nil {
-				return err
-			}
-			signature := &fpga.BatchReply_SignGenReply{ReqId: request.ReqId, SignR:r.Bytes(), SignS:s.Bytes()}
+			go s.sign_(wg, ch, request)
+		}
+		go func() {
+			wg.Wait()
+			close(ch)
+		}()
+		for signature := range ch{
 			reply.SgReplies = append(reply.SgReplies, signature)
-			reply.BatchId = batchReq.BatchId
 		}
 		if err := stream.Send(reply); err != nil {
 			s.logger.Errorf("mockserver sign rpc return failed! %v, %v", reply, err)
@@ -60,6 +61,21 @@ func (s *fpgaServer) Sign(stream fpga.BatchRPC_SignServer) error {
 	}
 
 	return nil
+}
+
+func (s *fpgaServer) sign_(wg *sync.WaitGroup, ch chan *fpga.BatchReply_SignGenReply, request *fpga.BatchRequest_SignGenRequest) {
+	defer wg.Done()
+	d := &big.Int{}
+	d.SetBytes(request.D)
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	privateKey.D = d
+
+	rr, ss, err := ecdsa.Sign(rand.Reader, privateKey, request.Hash)
+	if err != nil {
+		s.logger.Fatalf("sign failed! err: %v", err)
+	}
+	signature := &fpga.BatchReply_SignGenReply{ReqId: request.ReqId, SignR:rr.Bytes(), SignS:ss.Bytes()}
+	ch <- signature
 }
 
 func (s *fpgaServer) Verify(stream fpga.BatchRPC_VerifyServer) error {
@@ -72,35 +88,50 @@ func (s *fpgaServer) Verify(stream fpga.BatchRPC_VerifyServer) error {
 		}
 
 		reply := &fpga.BatchReply{}
+		reply.BatchId = batchReq.BatchId
 
+		ch := make(chan *fpga.BatchReply_SignVerReply)
+		wg := &sync.WaitGroup{}
+		wg.Add(len(batchReq.SvRequests))
 		for _, request := range batchReq.SvRequests {
-			intR := big.Int{}
-			intR.SetBytes(request.SignR)
-			intS := big.Int{}
-			intS.SetBytes(request.SignS)
-
-			x := big.Int{}
-			x.SetBytes(request.Px)
-			y := big.Int{}
-			y.SetBytes(request.Py)
-			pubkey := ecdsa.PublicKey{elliptic.P256(), &x, &y}
-
-			valid := ecdsa.Verify(&pubkey, request.Hash, &intR, &intS)
-			if !valid {
-				s.logger.Warningf("grpc server verify result: false")
-			}
-			result := &fpga.BatchReply_SignVerReply{ReqId:request.ReqId, Verified:valid}
-			reply.SvReplies = append(reply.SvReplies, result)
-			reply.BatchId = batchReq.BatchId
+			go s.verify_(wg, ch, request)
+		}
+		go func() {
+			wg.Wait()
+			close(ch)
+		}()
+		for sv := range ch{
+			reply.SvReplies = append(reply.SvReplies, sv)
 		}
 		if err := stream.Send(reply); err != nil {
-			s.logger.Errorf("mockserver verify rpc return failed! %v, %v", reply, err)
+			s.logger.Errorf("mockserver sign rpc return failed! %v, %v", reply, err)
 			return err
 		}
 		s.logger.Debugf("mock server returned verify rpc. batch_id: %d, ReqCount: %d", reply.BatchId, len(reply.SvReplies))
 	}
 
 	return nil
+}
+
+func (s *fpgaServer) verify_(wg *sync.WaitGroup, ch chan *fpga.BatchReply_SignVerReply, request *fpga.BatchRequest_SignVerRequest) {
+	defer wg.Done()
+	intR := big.Int{}
+	intR.SetBytes(request.SignR)
+	intS := big.Int{}
+	intS.SetBytes(request.SignS)
+
+	x := big.Int{}
+	x.SetBytes(request.Px)
+	y := big.Int{}
+	y.SetBytes(request.Py)
+	pubkey := ecdsa.PublicKey{elliptic.P256(), &x, &y}
+
+	valid := ecdsa.Verify(&pubkey, request.Hash, &intR, &intS)
+	if !valid {
+		s.logger.Warningf("grpc server verify result: false")
+	}
+	result := &fpga.BatchReply_SignVerReply{ReqId:request.ReqId, Verified:valid}
+	ch <- result
 }
 
 func newServer() *fpgaServer {
