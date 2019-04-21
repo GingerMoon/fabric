@@ -74,7 +74,7 @@ func (w *verifyWorker) work() {
 			}
 
 			// invoke the rpc
-			w.logger.Debugf("rpc request: %v", *task.in)
+			//w.logger.Debugf("rpc request: %v", *task.in)
 			w.rpcCh <- task.in
 			batchId++
 		}
@@ -95,8 +95,8 @@ func (w *verifyWorker) rpc() {
 			w.dump(request)
 			w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", request.BatchId, err)
 		}
-		w.logger.Debugf("rpc request: %v", *request)
-		w.logger.Debugf("rpc response: %v", *response)
+		//w.logger.Debugf("rpc request: %v", *request)
+		//w.logger.Debugf("rpc response: %v", *response)
 
 		// gossip
 		//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
