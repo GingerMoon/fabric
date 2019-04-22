@@ -25,7 +25,7 @@ type fpgaServer struct {
 }
 
 func (s *fpgaServer) Sign(stream fpga.BatchRPC_SignServer) error {
-	s.logger.Debugf("Sign rpc invoke")
+	//s.logger.Debugf("Sign rpc invoke")
 	for {
 		batchReq, err := stream.Recv()
 		if err != nil {
@@ -57,7 +57,7 @@ func (s *fpgaServer) Sign(stream fpga.BatchRPC_SignServer) error {
 			s.logger.Errorf("mockserver sign rpc return failed! %v, %v", reply, err)
 			return err
 		}
-		s.logger.Debugf("mock server returned sign rpc. batch_id: %d, ReqCount: %d", reply.BatchId, len(reply.SgReplies))
+		//s.logger.Debugf("mock server returned sign rpc. batch_id: %d, ReqCount: %d", reply.BatchId, len(reply.SgReplies))
 	}
 
 	return nil
@@ -79,7 +79,7 @@ func (s *fpgaServer) sign_(wg *sync.WaitGroup, ch chan *fpga.BatchReply_SignGenR
 }
 
 func (s *fpgaServer) Verify(stream fpga.BatchRPC_VerifyServer) error {
-	s.logger.Debugf("Verify rpc invoke")
+	//s.logger.Debugf("Verify rpc invoke")
 	for {
 		batchReq, err := stream.Recv()
 		if err != nil {
@@ -107,7 +107,7 @@ func (s *fpgaServer) Verify(stream fpga.BatchRPC_VerifyServer) error {
 			s.logger.Errorf("mockserver sign rpc return failed! %v, %v", reply, err)
 			return err
 		}
-		s.logger.Debugf("mock server returned verify rpc. batch_id: %d, ReqCount: %d", reply.BatchId, len(reply.SvReplies))
+		//s.logger.Debugf("mock server returned verify rpc. batch_id: %d, ReqCount: %d", reply.BatchId, len(reply.SvReplies))
 	}
 
 	return nil

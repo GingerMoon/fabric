@@ -139,7 +139,7 @@ func (w *endorserSignWorker) work() {
 					w.dump(request)
 					w.logger.Fatalf("stream.Send(request) failed. batchId: %d. err: %s", batchId, err)
 				}
-				w.logger.Debugf("rpc response: %v", *response)
+				//w.logger.Debugf("rpc response: %v", *response)
 
 				// gossip
 				//w.logger.Debugf("total sign rpc cRequests: %d. gossip: %d.", len(sgReqs), atomic.LoadInt32(&w.gossipCount))
