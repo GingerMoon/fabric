@@ -98,6 +98,7 @@ func (w *verifyOrdiWorker) work() {
 		var batchId uint64 = 0
 		for true {
 			time.Sleep( w.interval * time.Microsecond)
+			var out chan *pb.BatchReply = nil
 
 			w.reqLock.Lock()
 			size := w.cRequests.Len() // pending cRequests amount
@@ -127,15 +128,17 @@ func (w *verifyOrdiWorker) work() {
 				out = make(chan *pb.BatchReply)
 				task := &verifyRpcTask{in, out}
 				vk.pushBack(task)
+			}
+			w.reqLock.Unlock()
 
-				// parse rpc response
+			// parse rpc response
+			if out != nil {
 				for response := range out {
 					go w.parseResponse(response)
 					//w.logger.Debugf("total verify rpc cRequests: %d. gossip: %d.", w.cRequests.Len(), atomic.LoadInt32(&w.gossipCount))
 					//atomic.StoreInt32(&w.gossipCount, 0)
 				}
 			}
-			w.reqLock.Unlock()
 			batchId++
 		}
 	}()

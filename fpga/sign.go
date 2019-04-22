@@ -104,6 +104,7 @@ func (w *endorserSignWorker) work() {
 		var batchId uint64 = 1 // if batch_id is 0, it cannot be printed.
 		for true {
 			time.Sleep( w.interval * time.Microsecond)
+			var request *pb.BatchRequest = nil
 
 			w.reqLock.Lock()
 
@@ -130,10 +131,13 @@ func (w *endorserSignWorker) work() {
 					w.logger.Warningf("current w.cRequests.Len is %d, which is bigger than the batch size(%d)", w.cRequests.Len(), w.batchSize)
 				}
 
-				request := &pb.BatchRequest{SgRequests:sgReqs, BatchType:0, BatchId: batchId, ReqCount:uint32(len(sgReqs))}
-				w.rpcCh <- request
+				request = &pb.BatchRequest{SgRequests:sgReqs, BatchType:0, BatchId: batchId, ReqCount:uint32(len(sgReqs))}
 			}
 			w.reqLock.Unlock()
+
+			if request != nil {
+				w.rpcCh <- request
+			}
 			batchId++
 		}
 	}()
