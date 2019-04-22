@@ -124,7 +124,7 @@ func (w *verifyOrdiWorker) work() {
 				}
 
 				in := &pb.BatchRequest{SvRequests:svReqs}
-				out := make(chan *pb.BatchReply)
+				out = make(chan *pb.BatchReply)
 				task := &verifyRpcTask{in, out}
 				vk.pushBack(task)
 
