@@ -71,7 +71,7 @@ func (w *endorserSignWorker) init() {
 		w.batchSize = 10000
 	}
 
-	w.rpcClientCnt, err = strconv.Atoi(os.Getenv("FPGA_RPC_CLIENT"))
+	w.rpcClientCnt, err = strconv.Atoi(os.Getenv("FPGA_RPC_CLIENT_COUNT"))
 	if err != nil {
 		w.logger.Errorf("FPGA_RPC_CLIENT_COUNT(%s) is not set correctly! err: %v, now the FPGA_RPC_CLIENT_COUNT is set to default as 2",
 			os.Getenv("FPGA_RPC_CLIENT_COUNT"), err)

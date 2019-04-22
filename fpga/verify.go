@@ -48,10 +48,10 @@ func (w *verifyWorker) init() {
 	w.client = pb.NewBatchRPCClient(conn)
 	w.taskCh = make(chan *verifyRpcTask)
 
-	w.rpcClientCnt, err = strconv.Atoi(os.Getenv("FPGA_RPC_CLIENT"))
+	w.rpcClientCnt, err = strconv.Atoi(os.Getenv("FPGA_RPC_CLIENT_COUNT"))
 	if err != nil {
-		w.logger.Errorf("FPGA_RPC_CLIENT_COUNT(%s) is not set correctly!, not the FPGA_RPC_CLIENT_COUNT is set to default as 2",
-			os.Getenv("FPGA_RPC_CLIENT_COUNT"))
+		w.logger.Errorf("FPGA_RPC_CLIENT_COUNT(%s) is not set correctly! err: %v, now the FPGA_RPC_CLIENT_COUNT is set to default as 2",
+			os.Getenv("FPGA_RPC_CLIENT_COUNT"), err)
 		w.rpcClientCnt = 2
 	}
 	w.rpcCh = make(chan *pb.BatchRequest)
