@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/tee"
 	"google.golang.org/grpc"
@@ -35,7 +34,9 @@ type fpgaServer struct {
 	datakey []byte
 }
 
-func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) (*empty.Empty, error) {
+func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) (*pb.ErrorInfo, error) {
+
+	errorInfo := &pb.ErrorInfo{Err:""}
 
 	// serialize args to file.
 	logger.Errorf("serialize args to file for hw test. begin")
@@ -70,16 +71,16 @@ func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) 
 	d, _ := new(big.Int).SetString("a3cb5fde7b66d79ac4265f9385475f785b37864e8a7dd8e7a0a4d1cb588dfa8996e7d5812b58e1ba521e7e572953883e2d8374c7f706be72136a2c87a6aa970113b2c16d44919b06d6ff41d911a3b053567aa120774626a788fece38fdeabbaa34208aa583e301565956c83b2f9097b89590b6fe29829943d8eba23498f424b08156a46b72d9adef14baa196e83b3c9b5020af3d36fe8113f219a0459fb1119c6fe48bd432643a6b0e06227c722bd0e947f060991c59018d8e771bf50f22714d523c42a6aaf2eb2d1ed35c2051162ff2f340c9c72dd11b11eedc9a6c7e3c82e82cc3302c368da6ad48bc66cf50b522e8888cd766b70a65940a9e50b3b8ca1399", 16)
 	privateKey := rsa.PrivateKey{D:d}
 	privateKey.N = N
-	//privateKey.E = 65537
+	privateKey.E = 65537
 
 	plaintext, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, &privateKey, args.Datakey, args.Label)
 	s.datakey = plaintext
 	if err != nil {
 		logger.Errorf("Error from rsa decryption: %s\n", err)
-		return &empty.Empty{}, err
+		return errorInfo, err
 	}
 	logger.Infof("The received AES datakey is: %s\n", base64.StdEncoding.EncodeToString(s.datakey))
-	return &empty.Empty{}, nil
+	return errorInfo, nil
 }
 
 func (s *fpgaServer) Execute(ctx context.Context, args *pb.TeeArgs) (*pb.PlainCiphertexts, error) {
@@ -114,7 +115,7 @@ func (s *fpgaServer) Execute(ctx context.Context, args *pb.TeeArgs) (*pb.PlainCi
 	// execution
 	elf := string(args.Elf)
 	if elf == "paymentCCtee" {
-		plaintexts, plaintexts2encrypted, err := paymentCCtee(args.PlainCipherTexts.Plaintexts[:], ciphertextArgs)
+		plaintexts, plaintexts2encrypted, err := paymentCCtee(args.PlainCipherTexts.Plaintexts[:], ciphertextArgs[1:])
 		if err != nil {
 			return nil, err
 		}
@@ -184,6 +185,18 @@ func (s *fpgaServer) encryptReturnedArgs(plaintexts, nonces [][]byte) ([]*pb.Fee
 	return results, nil
 }
 
+
+
+//输入参数: plaintextArgs 在这个demo里是空的. ciphertextArgs里的内容是经过硬件data key解密的.
+//返回值: plaintext代表不需要硬件加密. ciphertext代表硬件需要对其中的元素加密.
+//两个demo中, 数字分别用字节数组和字符串表示. 看硬件实现起来哪个方便就用哪个. 我可以做相应修改.
+//
+//****************************************************************
+
+// payment demo
+// A 给 B 转账. ciphertextArgs[0]是解密后A的余额, ciphertextArgs[1] 是解密后B的余额. ciphertextArgs[2] 是要转账的钱的数量x.
+// 业务逻辑就是, A的余额必须大于x, 然后valueA = valueA-x, valueB = valueB+x, 将新的valueA和valueB放到ciphertext返回回去. 硬件接下来会对ciphertext里的内容用datakey加密.
+// 使用大端字节序
 func paymentCCtee(plaintextArgs [][]byte, ciphertextArgs [][]byte) (plaintext, ciphertext [][]byte, err error) {
 	if len(ciphertextArgs) != 3 {
 		return nil, nil, errors.New("paymentCCtee need 3 args!")
@@ -209,6 +222,9 @@ func paymentCCtee(plaintextArgs [][]byte, ciphertextArgs [][]byte) (plaintext, c
 	return nil, ciphertext, nil
 }
 
+// auction demo
+// 比较 ciphertextArgs[0] 和 ciphertextArgs[1] 的大小
+// 此demo中的数字用字符串表示.
 func compare(ciphertextArgs [][]byte) (plaintext [][]byte, err error) {
 	if len(ciphertextArgs) != 2 {
 		return nil, errors.New("compare need 2 args!")
