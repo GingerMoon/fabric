@@ -6,16 +6,15 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
+	"crypto/sha1"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric/common/flogging"
 	pb "github.com/hyperledger/fabric/protos/tee"
 	"google.golang.org/grpc"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"os"
@@ -36,28 +35,10 @@ type fpgaServer struct {
 
 func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) (*pb.ErrorInfo, error) {
 
+	logger.Errorf("pb.DataKeyArgs.Datakey: %s", hex.EncodeToString(args.Datakey))
+	logger.Errorf("pb.DataKeyArgs.Label: %s", hex.EncodeToString(args.Label))
+
 	errorInfo := &pb.ErrorInfo{Err:""}
-
-	// serialize args to file.
-	logger.Errorf("serialize args to file for hw test. begin")
-	fname := "auction.tee.ExchangeDataKey.args"
-	out, err := proto.Marshal(args)
-	if err != nil {
-		logger.Fatalf("Failed to encode ExchangeDataKey args:", err)
-	}
-	if err := ioutil.WriteFile(fname, out, 0644); err != nil {
-		logger.Fatalf("Failed to write ExchangeDataKey args:", err)
-	}
-
-	in, err := ioutil.ReadFile(fname)
-	if err != nil {
-		logger.Fatalf("Error reading file:", err)
-	}
-	tmp := &pb.DataKeyArgs{}
-	if err := proto.Unmarshal(in, tmp); err != nil {
-		logger.Fatalf("Failed to parse ExchangeDataKey args:", err)
-	}
-	logger.Errorf("serialize args to file for hw test. end")
 
 	/*
 	D,N,E are decided by only two of three.
@@ -67,13 +48,13 @@ func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) 
 	N: %s a7d134aef43b25bf19bcfcbff61e4a84bcbd62ff31dc2ba93d7768c0977a4f313d6c1d75ac861b880c33a530bc8f171d787e9abc6326c9579d2e3554e5dbec6b9684f06a72d3120d26ad4ba22c0ef5b5ec826f8b2be9ee96e9284010b28ab0211ad135d22138403313ed5722586e1a87e2a546271c5cb349fdf6ffedcb82d60ae9f874a6e1dbfbc5e58cec957ecc5706fdcb03390c496fc436b1359a0df4bab5d0ffa049f040177b17950269e86546274f679e921eda82e6deb761fb624cced8830bfd21c9c14ff77fe6ef0bb11d0653e97be01c48fe79a6433525512f8bbf6a116291c873bea99e4405f72c109d6d42020124e18872d4921c9984ae30c9a3f9
 	E: %d 65537
 	*/
-	N, _ := new(big.Int).SetString("a7d134aef43b25bf19bcfcbff61e4a84bcbd62ff31dc2ba93d7768c0977a4f313d6c1d75ac861b880c33a530bc8f171d787e9abc6326c9579d2e3554e5dbec6b9684f06a72d3120d26ad4ba22c0ef5b5ec826f8b2be9ee96e9284010b28ab0211ad135d22138403313ed5722586e1a87e2a546271c5cb349fdf6ffedcb82d60ae9f874a6e1dbfbc5e58cec957ecc5706fdcb03390c496fc436b1359a0df4bab5d0ffa049f040177b17950269e86546274f679e921eda82e6deb761fb624cced8830bfd21c9c14ff77fe6ef0bb11d0653e97be01c48fe79a6433525512f8bbf6a116291c873bea99e4405f72c109d6d42020124e18872d4921c9984ae30c9a3f9", 16)
-	d, _ := new(big.Int).SetString("a3cb5fde7b66d79ac4265f9385475f785b37864e8a7dd8e7a0a4d1cb588dfa8996e7d5812b58e1ba521e7e572953883e2d8374c7f706be72136a2c87a6aa970113b2c16d44919b06d6ff41d911a3b053567aa120774626a788fece38fdeabbaa34208aa583e301565956c83b2f9097b89590b6fe29829943d8eba23498f424b08156a46b72d9adef14baa196e83b3c9b5020af3d36fe8113f219a0459fb1119c6fe48bd432643a6b0e06227c722bd0e947f060991c59018d8e771bf50f22714d523c42a6aaf2eb2d1ed35c2051162ff2f340c9c72dd11b11eedc9a6c7e3c82e82cc3302c368da6ad48bc66cf50b522e8888cd766b70a65940a9e50b3b8ca1399", 16)
+	N, _ := new(big.Int).SetString("ae45ed5601cec6b8cc05f803935c674ddbe0d75c4c09fd7951fc6b0caec313a8df39970c518bffba5ed68f3f0d7f22a4029d413f1ae07e4ebe9e4177ce23e7f5404b569e4ee1bdcf3c1fb03ef113802d4f855eb9b5134b5a7c8085adcae6fa2fa1417ec3763be171b0c62b760ede23c12ad92b980884c641f5a8fac26bdad4a03381a22fe1b754885094c82506d4019a535a286afeb271bb9ba592de18dcf600c2aeeae56e02f7cf79fc14cf3bdc7cd84febbbf950ca90304b2219a7aa063aefa2c3c1980e560cd64afe779585b6107657b957857efde6010988ab7de417fc88d8f384c4e6e72c3f943e0c31c0c4a5cc36f879d8a3ac9d7d59860eaada6b83bb", 16)
+	d, _ := new(big.Int).SetString("56b04216fe5f354ac77250a4b6b0c8525a85c59b0bd80c56450a22d5f438e596a333aa875e291dd43f48cb88b9d5fc0d499f9fcd1c397f9afc070cd9e398c8d19e61db7c7410a6b2675dfbf5d345b804d201add502d5ce2dfcb091ce9997bbebe57306f383e4d588103f036f7e85d1934d152a323e4a8db451d6f4a5b1b0f102cc150e02feee2b88dea4ad4c1baccb24d84072d14e1d24a6771f7408ee30564fb86d4393a34bcf0b788501d193303f13a2284b001f0f649eaf79328d4ac5c430ab4414920a9460ed1b7bc40ec653e876d09abc509ae45b525190116a0c26101848298509c1c3bf3a483e7274054e15e97075036e989f60932807b5257751e79", 16)
 	privateKey := rsa.PrivateKey{D:d}
 	privateKey.N = N
-	privateKey.E = 65537
+	privateKey.E = 0x10001
 
-	plaintext, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, &privateKey, args.Datakey, args.Label)
+	plaintext, err := rsa.DecryptOAEP(sha1.New(), rand.Reader, &privateKey, args.Datakey, args.Label)
 	s.datakey = plaintext
 	if err != nil {
 		logger.Errorf("Error from rsa decryption: %s\n", err)
@@ -85,26 +66,13 @@ func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) 
 
 func (s *fpgaServer) Execute(ctx context.Context, args *pb.TeeArgs) (*pb.PlainCiphertexts, error) {
 
-	// serialize args to file.
-	logger.Errorf("serialize TEE args to file for hw test. begin")
-	fname := "auction.tee.Execute.args"
-	out, err := proto.Marshal(args)
-	if err != nil {
-		logger.Fatalf("Failed to encode Execute args:", err)
+	for i, e := range args.Nonces {
+		logger.Errorf("pb.TeeArgs.Nonces[%d]: %s \n", i, hex.EncodeToString(e))
 	}
-	if err := ioutil.WriteFile(fname, out, 0644); err != nil {
-		logger.Fatalf("Failed to write Execute args:", err)
+	for i, e := range args.PlainCipherTexts.Feed4Decryptions {
+		logger.Errorf("pb.TeeArgs.PlainCipherTexts.Feed4Decryptions[%d].Ciphertext: %s \n", i, hex.EncodeToString(e.Ciphertext))
+		logger.Errorf("pb.TeeArgs.PlainCipherTexts.Feed4Decryptions[%d].Nonce: %s \n", i, hex.EncodeToString(e.Nonce))
 	}
-
-	in, err := ioutil.ReadFile(fname)
-	if err != nil {
-		logger.Fatalf("Error reading file:", err)
-	}
-	tmp := &pb.TeeArgs{}
-	if err := proto.Unmarshal(in, tmp); err != nil {
-		logger.Fatalf("Failed to address Execute args:", err)
-	}
-	logger.Errorf("serialize TEE args to file for hw test. end")
 
 	// decrypte the TEE execution args
 	ciphertextArgs, err := s.decryptExecuteArgs(args.PlainCipherTexts.Feed4Decryptions)

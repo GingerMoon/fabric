@@ -20,7 +20,7 @@ import "google/protobuf/empty.proto";
 // Interface exported by the server.
 service Tee {
     rpc Execute(TeeArgs) returns (PlainCiphertexts) {}
-    rpc ExchangeDataKey(DataKeyArgs) returns (ErrorInfo) {} // !!!更新: 原来是google.protobuf.Empty, 现在改为string, 用来判断ExchangeDataKey调用是否成功.因为C++的驱动找不到empty类型. string里面包含错误信息, 为空代表成功. 不管该rpc调用是否成功
+    rpc ExchangeDataKey(DataKeyArgs) returns (ErrorInfo) {} // !!!更新: 原来是google.protobuf.Empty, 现在改为string, 用来判断ExchangeDataKey调用是否成功.因为C++的驱动找不到empty类型. string里面包含错误信息, 为空代表成功. 不管该rpc调用是否成功 todo rsa encryption should use sha256 instead.
 }
 
 message TeeArgs {
