@@ -8,6 +8,7 @@ package chaincode
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -103,6 +104,7 @@ func NewChaincodeSupport(
 			"CORE_CHAINCODE_LOGGING_LEVEL=" + config.LogLevel,
 			"CORE_CHAINCODE_LOGGING_SHIM=" + config.ShimLogLevel,
 			"CORE_CHAINCODE_LOGGING_FORMAT=" + config.LogFormat,
+			"TEE_FPGA_SERVER_ADDR=" + os.Getenv("TEE_FPGA_SERVER_ADDR"),
 		},
 	}
 
