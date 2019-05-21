@@ -33,12 +33,10 @@ type fpgaServer struct {
 	datakey []byte
 }
 
-func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) (*pb.ErrorInfo, error) {
+func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) (*pb.ExchangeDataKeyResult, error) {
 
 	logger.Errorf("pb.DataKeyArgs.Datakey: %s", hex.EncodeToString(args.Datakey))
 	logger.Errorf("pb.DataKeyArgs.Label: %s", hex.EncodeToString(args.Label))
-
-	errorInfo := &pb.ErrorInfo{Err:""}
 
 	/*
 	D,N,E are decided by only two of three.
@@ -58,10 +56,10 @@ func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) 
 	s.datakey = plaintext
 	if err != nil {
 		logger.Errorf("Error from rsa decryption: %s\n", err)
-		return errorInfo, err
+		return &pb.ExchangeDataKeyResult{Result:1}, err
 	}
 	logger.Infof("The received AES datakey is: %s\n", base64.StdEncoding.EncodeToString(s.datakey))
-	return errorInfo, nil
+	return &pb.ExchangeDataKeyResult{Result:0}, nil
 }
 
 func (s *fpgaServer) Execute(ctx context.Context, args *pb.TeeArgs) (*pb.PlainCiphertexts, error) {
