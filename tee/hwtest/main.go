@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -21,7 +22,7 @@ import (
 	"time"
 )
 
-var logger = flogging.MustGetLogger("hwtest")
+var logger = flogging.MustGetLogger("limin")
 
 var datakey = []byte {
 	0xee, 0xbc, 0x1f, 0x57, 0x48, 0x7f, 0x51, 0x92, 0x1c, 0x04, 0x65, 0x66,
@@ -45,27 +46,52 @@ func exchangeDataKey() {
 	publicKey := rsa.PublicKey{N, 0x10001}
 
 	logger.Infof("the AES datakey is: %s. len: %d.", hex.EncodeToString(datakey), len(datakey))
-	label := []byte("12345678901234567890")
+	// shenyaming, 2019/06/04
+	// TEE only support that  label is an empty string.
+	//label := []byte("label_abcflabel_abcf")
+	// And the corresponding hash value lHash of the empty string is :
+	// SHA-1: (0x)da39a3ee 5e6b4b0d 3255bfef 95601890 afd80709
+
+	label := []byte{}
+
+	// Exmaple 1: only when label is an empty string.
+	// label_hash := []byte{0xda,0x39,0xa3,0xee,0x5e,0x6b,0x4b,0x0d,0x32,0x55,0xbf,0xef,0x95,0x60,0x18,0x90,0xaf,0xd8,0x07,0x09};
+
+	// Example 2: when label is
+	label_hash := sha1.New().Sum(label)
 
 	rng := rand.Reader
 
 	ciphertext, err := rsa.EncryptOAEP(sha1.New(), rng, &publicKey, datakey, label)
+
+	d := new(big.Int)
+	d.SetString("56b04216fe5f354ac77250a4b6b0c8525a85c59b0bd80c56450a22d5f438e596a333aa875e291dd43f48cb88b9d5fc0d499f9fcd1c397f9afc070cd9e398c8d19e61db7c7410a6b2675dfbf5d345b804d201add502d5ce2dfcb091ce9997bbebe57306f383e4d588103f036f7e85d1934d152a323e4a8db451d6f4a5b1b0f102cc150e02feee2b88dea4ad4c1baccb24d84072d14e1d24a6771f7408ee30564fb86d4393a34bcf0b788501d193303f13a2284b001f0f649eaf79328d4ac5c430ab4414920a9460ed1b7bc40ec653e876d09abc509ae45b525190116a0c26101848298509c1c3bf3a483e7274054e15e97075036e989f60932807b5257751e79", 16)
+	private := new(rsa.PrivateKey)
+	private.PublicKey = rsa.PublicKey{publicKey.N, publicKey.E}
+	private.D = d
+
+	out, out_err    := rsa.DecryptOAEP(sha1.New(), nil, private, ciphertext, nil)
+	if out_err != nil {
+		return
+	}
+	logger.Infof("Out(RSA) of AES datakey: %s. len is %d", hex.EncodeToString(out), len(out))
+
 	if err != nil {
 		logger.Errorf("Error from encryption: %s", err)
 		return
 	}
 	logger.Infof("Ciphertext(RSA) of AES datakey: %s. len is %d", hex.EncodeToString(ciphertext), len(ciphertext))
-	logger.Infof("RSA label is: label_abc. hex encoded string is: %s. len is %d", hex.EncodeToString(label), len(label))
+	logger.Infof("RSA label is: label_abc. hex encoded string is: %s. len is %d", hex.EncodeToString(label_hash), len(label_hash))
 
 	logger.Errorf("洪明希望不要发送exchangedatakey rpc, 所以先暂时不发送rpc. 如果洪明需要测试这个rpc, 李明请把当前这条log信息下的代码注释去掉即可.")
-	//ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	//defer cancel()
-	//resp, err := createTeeClient().ExchangeDataKey(ctx, &pb.DataKeyArgs{Datakey:ciphertext, Label:label})
-	//if err != nil {
-	//	logger.Errorf("exchange datakey failed. err: %s", err.Error())
-	//} else {
-	//	logger.Infof("exchange datakey succeeded! response: %s", resp.Result)
-	//}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := createTeeClient().ExchangeDataKey(ctx, &pb.DataKeyArgs{Datakey:ciphertext, Label:label_hash})
+	if err != nil {
+		logger.Errorf("exchange datakey failed. err: %s", err.Error())
+	} else {
+		logger.Infof("exchange datakey succeeded! response: %s", resp.Result)
+	}
 }
 
 type encryptedContent struct {
@@ -136,9 +162,21 @@ func getCiphertextOfData() (balance, x, elf *encryptedContent) {
 	for i := 0; i < paddingCount; i++ {
 		plaintextElf = append(plaintextElf, 0)
 	}
+
+	// yaming elf need an extra reverse operation due to the hw bug
+	var plaintextBin []byte
+	for i := 0; i < len(plaintextElf); i = i + 8 {
+		//	fmt.Println("==============")
+		//	fmt.Println(i)
+		for j := 0; j < 8; j++ {
+			plaintextBin = append(plaintextBin, plaintextElf[i+7-j])
+			//  fmt.Println(plaintextElf[i+j])
+		}
+
+	}
 	//logger.Infof("AES加密ELF...")
-	elf = aesEncrypt(plaintextElf) // limin elf 需要额外编码
-	//elf = aesEncrypt([]byte(hex.EncodeToString(plaintextElf))) // limin elf 不需要额外hex编码
+	elf = aesEncrypt(plaintextBin)
+	//elf = aesEncrypt([]byte(hex.EncodeToString(plaintextElf)))
 	return
 }
 
@@ -173,7 +211,7 @@ func testExecute(wg *sync.WaitGroup) {
 	defer cancel()
 	response, err := createTeeClient().Execute(ctx, in)
 	if err != nil {
-		logger.Errorf("createTeeClient().Execute(ctx, in) return error: %s", err.Error())
+		logger.Fatalf("createTeeClient().Execute(ctx, in) return error: %s", err.Error())
 	}
 
 	balanceABytes := aesDecrypt(response.Feed4Decryptions[0].Ciphertext, response.Feed4Decryptions[0].Nonce)
@@ -199,19 +237,18 @@ func testExecute(wg *sync.WaitGroup) {
 		logger.Infof("execute rpc succeeded!")
 	}
 
+	if bytes.Compare(feed4decrytions[1].Ciphertext, response.Feed4Decryptions[0].Ciphertext) != 0 ||
+		bytes.Compare(feed4decrytions[1].Nonce, response.Feed4Decryptions[0].Nonce) != 0 {
+			logger.Errorf("response.Feed4Decryptions[0] (ciphertext: %s, nonce: %s) does equal to feed4decrytions[1]",
+				response.Feed4Decryptions[0].Ciphertext, response.Feed4Decryptions[0].Nonce)
+	}
 
-	//if bytes.Compare(feed4decrytions[1].Ciphertext, response.Feed4Decryptions[0].Ciphertext) != 0 ||
-	//	bytes.Compare(feed4decrytions[1].Nonce, response.Feed4Decryptions[0].Nonce) != 0 {
-	//		logger.Errorf("response.Feed4Decryptions[0] (ciphertext: %s, nonce: %s) does equal to feed4decrytions[1]",
-	//			response.Feed4Decryptions[0].Ciphertext, response.Feed4Decryptions[0].Nonce)
-	//}
-	//
-	//if bytes.Compare(feed4decrytions[2].Ciphertext, response.Feed4Decryptions[1].Ciphertext) != 0 ||
-	//	bytes.Compare(feed4decrytions[2].Nonce, response.Feed4Decryptions[1].Nonce) != 0 {
-	//		logger.Errorf("response.Feed4Decryptions[1] (ciphertext: %s, nonce: %s) does equal to feed4decrytions[2]",
-	//			response.Feed4Decryptions[1].Ciphertext, response.Feed4Decryptions[1].Nonce)
-	//}
-	//logger.Infof("execute rpc succeeded!")
+	if bytes.Compare(feed4decrytions[2].Ciphertext, response.Feed4Decryptions[1].Ciphertext) != 0 ||
+		bytes.Compare(feed4decrytions[2].Nonce, response.Feed4Decryptions[1].Nonce) != 0 {
+			logger.Errorf("response.Feed4Decryptions[1] (ciphertext: %s, nonce: %s) does equal to feed4decrytions[2]",
+				response.Feed4Decryptions[1].Ciphertext, response.Feed4Decryptions[1].Nonce)
+	}
+	logger.Infof("execute rpc succeeded!")
 }
 
 func main() {

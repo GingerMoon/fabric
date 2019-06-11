@@ -28,7 +28,8 @@ message TeeArgs {
 
 message PlainCiphertexts {
     repeated  bytes plaintexts = 1; // 明文. !!!注意:此处的明文有别于aes_gcm中的additional_data. 注意!!!(和胡总沟通过, 需要此字段的业务场景可能不多, 暂时先保留) todo 驱动请忽视这个字段.
-    repeated  Feed4Decryption feed4Decryptions = 2; // 密文, 以及解密该密文所需要的东西. 注意!!! todo feed4Decryptions[0] 为加密的elf/hex
+    repeated  Feed4Decryption feed4Decryptions = 2; // 密文, 以及解密该密文所需要的东西. 注意!!! todo feed4Decryptions[0] 为加密的elf/hex,
+    // !!! todo 由于硬件的bugelf需要额外的倒置的步骤
 }
 
 message Feed4Decryption {
@@ -39,7 +40,7 @@ message Feed4Decryption {
 
 message DataKeyArgs {
     bytes datakey = 1; // AES加解密算法所需要的秘钥
-    bytes label = 2; // RSA解密算法所需要使用的label,是个普通的字符串, 也可以是空字符串. 现在可能和硬件约定了是空字符串,如果确定是这样那么就不需要这个字段了.
+    bytes label = 2; // RSA解密算法所需要使用的label,是个普通的字符串, 也可以是空字符串. todo from 亚明 rsa label必须是空字节数组, 然后这里的label是sha1的哈希.
 }
 
 message ExchangeDataKeyResult {

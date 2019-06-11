@@ -52,7 +52,8 @@ func (s *fpgaServer) ExchangeDataKey(ctx context.Context, args *pb.DataKeyArgs) 
 	privateKey.N = N
 	privateKey.E = 0x10001
 
-	plaintext, err := rsa.DecryptOAEP(sha1.New(), rand.Reader, &privateKey, args.Datakey, args.Label)
+	//args.Label is sha1.New().Sum(label)
+	plaintext, err := rsa.DecryptOAEP(sha1.New(), rand.Reader, &privateKey, args.Datakey, []byte{}) // from Yaming the label byte array has to be empty.
 	s.datakey = plaintext
 	if err != nil {
 		logger.Errorf("Error from rsa decryption: %s\n", err)
