@@ -221,6 +221,7 @@ func testExecute(wg *sync.WaitGroup) {
 	if balanceA != 20 || balanceB != 180 {
 		logger.Errorf("test failed!!! transfer 80 from accountA(balanceA: 100) to accountB(balanceB: 100), the expected result is, balanceA: 20, balanceB: 180")
 		logger.Errorf("but the result is: balanceA: %v, balanceB: %v", balanceA, balanceB)
+		logger.Errorf("balanceA bytes: %s, balanceB bytes: %s", hex.EncodeToString(balanceABytes), hex.EncodeToString(balanceBBytes))
 		logger.Errorf("encrypted elf hex: %s. the nonce is: %s.", hex.EncodeToString(elf.Content), hex.EncodeToString(elf.Nonce))
 		logger.Errorf("tee args are below:")
 		for i, e := range in.Nonces {
