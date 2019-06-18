@@ -16,7 +16,7 @@ package protos;
 
 // Interface exported by the server.
 service Tee {
-    rpc Execute(TeeArgs) returns (PlainCiphertexts) {}
+    rpc Execute(TeeArgs) returns (PlainCiphertexts) {} // PlainCiphertexts.plaintexts[0] 存放硬件执行elf的错误信息. 如果没有错误, 那么数组PlainCiphertexts.plaintexts的长度为0
     rpc ExchangeDataKey(DataKeyArgs) returns (ExchangeDataKeyResult) {} // todo rsa encryption should use sha256 instead. for now yaming uses sha1.
 }
 
